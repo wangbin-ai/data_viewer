@@ -164,9 +164,7 @@ body::before {
 .main {
   position: relative;
   z-index: 1;
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 20px 20px 60px;
+  padding: 20px 24px 60px;
 }
 
 /* ── Dir grid ── */
@@ -299,7 +297,47 @@ body::before {
   height: auto;
   display: block;
   object-fit: contain;
+  cursor: zoom-in;
+  transition: opacity .15s;
 }
+.card-images img:hover { opacity: .85; }
+
+/* ── Lightbox ── */
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0,0,0,.88);
+  backdrop-filter: blur(8px);
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: var(--radius);
+  box-shadow: 0 0 60px rgba(0,0,0,.8);
+  cursor: default;
+  animation: lbIn .2s ease;
+}
+@keyframes lbIn {
+  from { opacity: 0; transform: scale(.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.lightbox-close {
+  position: absolute;
+  top: 18px; right: 22px;
+  color: rgba(255,255,255,.6);
+  font-size: 28px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color .15s;
+}
+.lightbox-close:hover { color: #fff; }
 
 /* ── Text panel ── */
 .card-text {
@@ -505,6 +543,11 @@ body::before {
 
 <div id="breadcrumb" class="breadcrumb" style="display:none"></div>
 
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="lightbox-close" onclick="closeLightbox()">✕</span>
+  <img id="lightboxImg" src="" alt="" onclick="event.stopPropagation()">
+</div>
+
 <div class="main" id="main">
   <div class="status">
     输入目录路径，点击「打开」开始浏览
@@ -688,7 +731,7 @@ function buildCard(lineNum, raw, parsed) {
           if (rel) {
             const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}`;
             imagesHtml += `<div class="card-img-wrap">
-              <img src="${src}" loading="lazy" alt="${esc(rel)}" title="${esc(rel)}">
+              <img src="${src}" loading="lazy" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
             </div>`;
           }
         }
@@ -801,6 +844,18 @@ function prettyJson(raw) {
 function showError(msg) {
   mainEl.innerHTML = `<div class="error-msg">❌ ${esc(msg)}</div>`;
 }
+
+// ── Lightbox ──
+function openLightbox(img) {
+  document.getElementById('lightboxImg').src = img.src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
 
 // Enter key
 document.getElementById('pathInput').addEventListener('keydown', e => {
