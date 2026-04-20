@@ -2,6 +2,8 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
+const os = require('os');
+const tar = require('tar');
 
 const app = express();
 const PORT = 3000;
@@ -44,7 +46,8 @@ app.get('/api/browse', (req, res) => {
     res.json({
       path: dirPath,
       items,
-      isDataDir: hasJsonlDir && hasImagesDir,
+      isDataDir: hasJsonlDir,   // images dir is optional
+      hasImagesDir,
     });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -106,16 +109,98 @@ app.get('/api/records', async (req, res) => {
   }
 });
 
-// Serve an image file by absolute path
-app.get('/api/image', (req, res) => {
-  const imgPath = safePath(req.query.path);
-  if (!imgPath) return res.status(400).json({ error: 'Invalid path' });
+// ── Tar image cache ──
+const CACHE_DIR = path.join(os.tmpdir(), 'data_viewer_cache');
+fs.mkdirSync(CACHE_DIR, { recursive: true });
 
+// imagesDir → Promise<Map<filename, tarFilePath>>
+const dirIndexPromises = new Map();
+// tarFilePath → Promise<cacheDir>
+const tarExtractPromises = new Map();
+
+function buildDirIndex(imagesDir) {
+  if (dirIndexPromises.has(imagesDir)) return dirIndexPromises.get(imagesDir);
+
+  const promise = (async () => {
+    const index = new Map();
+    let entries;
+    try { entries = fs.readdirSync(imagesDir); } catch { return index; }
+
+    const tarFiles = entries.filter(f => /\.(tar|tar\.gz|tgz)$/i.test(f));
+    for (const tf of tarFiles) {
+      const tarPath = path.join(imagesDir, tf);
+      try {
+        await tar.list({
+          file: tarPath,
+          onentry(entry) {
+            const base = path.basename(entry.path);
+            if (base && !index.has(base)) index.set(base, tarPath);
+          },
+        });
+      } catch { /* skip unreadable tar */ }
+    }
+    return index;
+  })();
+
+  dirIndexPromises.set(imagesDir, promise);
+  return promise;
+}
+
+function extractTar(tarPath) {
+  if (tarExtractPromises.has(tarPath)) return tarExtractPromises.get(tarPath);
+
+  const safeKey = Buffer.from(tarPath).toString('base64').replace(/[/+=]/g, '_');
+  const outDir = path.join(CACHE_DIR, safeKey);
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const promise = tar.extract({ file: tarPath, cwd: outDir })
+    .then(() => outDir)
+    .catch(e => { tarExtractPromises.delete(tarPath); throw e; });
+
+  tarExtractPromises.set(tarPath, promise);
+  return promise;
+}
+
+function findFileRecursive(dir, name) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fp = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      const found = findFileRecursive(fp, name);
+      if (found) return found;
+    } else if (e.name === name) {
+      return fp;
+    }
+  }
+  return null;
+}
+
+// Serve an image.
+// Accepts ?base=<images-dir>&rel=<relative-path-inside-images-dir>
+// Falls back to tar extraction when the file isn't on disk directly.
+app.get('/api/image', async (req, res) => {
+  const base = safePath(req.query.base);   // e.g. /root/data/stem/images
+  const rel  = req.query.rel;              // e.g. 新能源分析/257.png
+  if (!base || !rel) return res.status(400).json({ error: 'Missing base or rel param' });
+
+  const imgPath = path.join(base, rel);
+  const filename = path.basename(rel);
+
+  // Serve directly if the file already exists on disk
+  if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
+
+  // Search for the file inside tar archives in the base images directory
   try {
-    if (!fs.existsSync(imgPath)) return res.status(404).send('Not found');
-    res.sendFile(imgPath);
+    const index = await buildDirIndex(base);
+    const tarPath = index.get(filename);
+    if (!tarPath) return res.status(404).send('Image not found in any tar');
+
+    const cacheDir = await extractTar(tarPath);
+    const found = findFileRecursive(cacheDir, filename);
+    if (!found) return res.status(404).send('File missing after extraction');
+
+    res.sendFile(found);
   } catch (e) {
-    res.status(400).json({ error: e.message });
+    res.status(500).json({ error: e.message });
   }
 });
 
