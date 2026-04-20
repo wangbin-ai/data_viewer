@@ -42,11 +42,14 @@ app.get('/api/browse', (req, res) => {
       fs.statSync(path.join(dirPath, 'jsonl')).isDirectory();
     const hasImagesDir = fs.existsSync(path.join(dirPath, 'images')) &&
       fs.statSync(path.join(dirPath, 'images')).isDirectory();
+    // Also treat dir as data dir when .jsonl files live directly in it
+    const hasJsonlFiles = !hasJsonlDir &&
+      entries.some(e => !e.isDirectory() && e.name.endsWith('.jsonl'));
 
     res.json({
       path: dirPath,
       items,
-      isDataDir: hasJsonlDir,   // images dir is optional
+      isDataDir: hasJsonlDir || hasJsonlFiles,
       hasImagesDir,
     });
   } catch (e) {
@@ -54,13 +57,17 @@ app.get('/api/browse', (req, res) => {
   }
 });
 
-// List jsonl files inside a data dir
+// List jsonl files inside a data dir.
+// Looks in jsonl/ subdir first; falls back to the dir itself.
 app.get('/api/jsonl-files', (req, res) => {
   const dirPath = safePath(req.query.path);
   if (!dirPath) return res.status(400).json({ error: 'Invalid path' });
 
   try {
-    const jsonlDir = path.join(dirPath, 'jsonl');
+    const subdir = path.join(dirPath, 'jsonl');
+    const jsonlDir = fs.existsSync(subdir) && fs.statSync(subdir).isDirectory()
+      ? subdir
+      : dirPath;
     const files = fs.readdirSync(jsonlDir)
       .filter(f => f.endsWith('.jsonl'))
       .sort()
