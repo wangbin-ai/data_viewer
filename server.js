@@ -174,19 +174,23 @@ function findFileRecursive(dir, name) {
   return null;
 }
 
-// Serve an image file — falls back to tar extraction if not found directly
+// Serve an image.
+// Accepts ?base=<images-dir>&rel=<relative-path-inside-images-dir>
+// Falls back to tar extraction when the file isn't on disk directly.
 app.get('/api/image', async (req, res) => {
-  const imgPath = safePath(req.query.path);
-  if (!imgPath) return res.status(400).json({ error: 'Invalid path' });
+  const base = safePath(req.query.base);   // e.g. /root/data/stem/images
+  const rel  = req.query.rel;              // e.g. 新能源分析/257.png
+  if (!base || !rel) return res.status(400).json({ error: 'Missing base or rel param' });
 
-  // Serve directly if file exists on disk
+  const imgPath = path.join(base, rel);
+  const filename = path.basename(rel);
+
+  // Serve directly if the file already exists on disk
   if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
 
-  const imagesDir = path.dirname(imgPath);
-  const filename = path.basename(imgPath);
-
+  // Search for the file inside tar archives in the base images directory
   try {
-    const index = await buildDirIndex(imagesDir);
+    const index = await buildDirIndex(base);
     const tarPath = index.get(filename);
     if (!tarPath) return res.status(404).send('Image not found in any tar');
 

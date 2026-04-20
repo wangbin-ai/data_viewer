@@ -5,443 +5,560 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Data Viewer</title>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg: #f5f6fa;
-    --surface: #ffffff;
-    --border: #e2e6ea;
-    --primary: #4a6cf7;
-    --primary-hover: #3a5ce6;
-    --text: #2d3748;
-    --muted: #718096;
-    --user-bg: #ebf4ff;
-    --user-border: #bee3f8;
-    --assistant-bg: #f0fff4;
-    --assistant-border: #9ae6b4;
-    --think-bg: #fffbeb;
-    --think-border: #fbd38d;
-    --code-bg: #f7fafc;
-    --radius: 8px;
-  }
+:root {
+  --bg:             #080c14;
+  --bg2:            #0c1220;
+  --surface:        #111827;
+  --surface2:       #1a2235;
+  --border:         rgba(99,102,241,.18);
+  --border-bright:  rgba(99,102,241,.5);
+  --primary:        #6366f1;
+  --primary2:       #818cf8;
+  --cyan:           #22d3ee;
+  --green:          #34d399;
+  --amber:          #fbbf24;
+  --red:            #f87171;
+  --text:           #e2e8f0;
+  --text2:          #94a3b8;
+  --text3:          #4b5680;
+  --user-bg:        rgba(59,130,246,.08);
+  --user-border:    rgba(59,130,246,.25);
+  --asst-bg:        rgba(52,211,153,.06);
+  --asst-border:    rgba(52,211,153,.2);
+  --think-bg:       rgba(251,191,36,.06);
+  --think-border:   rgba(251,191,36,.25);
+  --glow:           0 0 24px rgba(99,102,241,.18);
+  --radius:         12px;
+  --radius-sm:      7px;
+}
 
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    font-size: 14px;
-    line-height: 1.6;
-  }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.65;
+  min-height: 100vh;
+}
 
-  /* ── Header ── */
-  .header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 12px 20px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 1px 4px rgba(0,0,0,.06);
-  }
-  .header h1 { font-size: 16px; font-weight: 700; white-space: nowrap; }
-  .path-input {
-    flex: 1;
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 13px;
-    outline: none;
-    transition: border-color .15s;
-    min-width: 0;
-  }
-  .path-input:focus { border-color: var(--primary); }
-  .btn {
-    padding: 6px 14px;
-    background: var(--primary);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    font-size: 13px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background .15s;
-  }
-  .btn:hover { background: var(--primary-hover); }
-  .btn.secondary {
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-  }
-  .btn.secondary:hover { background: var(--bg); }
+/* ── Animated bg grid ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(99,102,241,.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99,102,241,.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
 
-  /* ── Breadcrumb ── */
-  .breadcrumb {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 8px 20px;
-    font-size: 12px;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 2px;
-  }
-  .breadcrumb span { cursor: pointer; color: var(--primary); }
-  .breadcrumb span:hover { text-decoration: underline; }
-  .breadcrumb .sep { color: var(--muted); margin: 0 2px; }
-  .breadcrumb .current { color: var(--text); font-weight: 600; cursor: default; }
+/* ── Header ── */
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(8,12,20,.85);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--primary), var(--cyan), transparent);
+  opacity: .4;
+}
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.logo-icon {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, var(--primary), var(--cyan));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+.logo-text {
+  font-size: 15px;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--primary2), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+}
+.path-input {
+  flex: 1;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 12px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+  min-width: 0;
+}
+.path-input::placeholder { color: var(--text3); }
+.path-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+}
+.btn {
+  padding: 7px 18px;
+  background: linear-gradient(135deg, var(--primary), #4f46e5);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s, transform .1s;
+  box-shadow: 0 2px 12px rgba(99,102,241,.35);
+}
+.btn:hover { opacity: .88; }
+.btn:active { transform: scale(.97); }
 
-  /* ── Main layout ── */
-  .main { padding: 16px 20px; }
+/* ── Breadcrumb ── */
+.breadcrumb {
+  position: relative;
+  z-index: 1;
+  background: rgba(12,18,32,.7);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 24px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  color: var(--text3);
+}
+.breadcrumb a {
+  color: var(--primary2);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color .15s;
+}
+.breadcrumb a:hover { color: var(--cyan); }
+.breadcrumb .sep { color: var(--text3); margin: 0 3px; }
+.breadcrumb .cur { color: var(--text); font-weight: 600; }
 
-  /* ── Directory browser ── */
-  .dir-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-  .dir-item {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 10px 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: border-color .15s, box-shadow .15s;
-    word-break: break-all;
-  }
-  .dir-item:hover {
-    border-color: var(--primary);
-    box-shadow: 0 2px 8px rgba(74,108,247,.12);
-  }
-  .dir-item .icon { font-size: 18px; flex-shrink: 0; }
-  .dir-item .name { font-size: 13px; font-weight: 500; }
+/* ── Main ── */
+.main {
+  position: relative;
+  z-index: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 20px 60px;
+}
 
-  /* ── File selector ── */
-  .file-selector {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .file-selector label { font-weight: 600; font-size: 13px; }
-  .file-select {
-    flex: 1;
-    min-width: 200px;
-    padding: 5px 8px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 13px;
-    outline: none;
-  }
-  .file-select:focus { border-color: var(--primary); }
+/* ── Dir grid ── */
+.dir-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.dir-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+  word-break: break-all;
+}
+.dir-item:hover {
+  border-color: var(--border-bright);
+  background: var(--surface2);
+  box-shadow: var(--glow);
+}
+.dir-item .icon { font-size: 20px; flex-shrink: 0; }
+.dir-item .name { font-size: 12px; font-weight: 500; color: var(--text2); }
 
-  /* ── Masonry waterfall ── */
-  .waterfall {
-    columns: 1;
-    column-gap: 16px;
-  }
-  @media (min-width: 900px) { .waterfall { columns: 2; } }
-  @media (min-width: 1400px) { .waterfall { columns: 3; } }
+/* ── File selector ── */
+.file-selector {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.file-selector label { font-size: 12px; font-weight: 600; color: var(--text2); white-space: nowrap; }
+.file-select {
+  flex: 1;
+  min-width: 180px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 9px;
+  outline: none;
+}
+.file-select:focus { border-color: var(--primary); }
+.record-count {
+  font-size: 11px;
+  color: var(--text3);
+  background: rgba(99,102,241,.1);
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid rgba(99,102,241,.2);
+}
 
-  /* ── Record card ── */
-  .record-card {
-    break-inside: avoid;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    margin-bottom: 16px;
-    overflow: hidden;
-    display: inline-block;
-    width: 100%;
-  }
-  .card-header {
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    padding: 6px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .card-id { font-family: monospace; }
+/* ── Single-column feed ── */
+.feed { display: flex; flex-direction: column; gap: 16px; }
 
-  /* ── Card body: images left, text right ── */
-  .card-body {
-    display: flex;
-    gap: 0;
-    min-height: 0;
-  }
-  .card-images {
-    flex: 0 0 auto;
-    width: 200px;
-    min-width: 120px;
-    max-width: 260px;
-    border-right: 1px solid var(--border);
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    background: #fafafa;
-  }
-  .card-images:empty { display: none; }
-  .card-images img {
-    width: 100%;
-    height: auto;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    display: block;
-    object-fit: contain;
-    loading: lazy;
-  }
-  .img-label {
-    font-size: 11px;
-    color: var(--muted);
-    text-align: center;
-    margin-bottom: 2px;
-  }
+/* ── Record card ── */
+.record-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+  animation: fadeUp .3s ease both;
+}
+.record-card:hover {
+  border-color: var(--border-bright);
+  box-shadow: var(--glow);
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-  .card-text {
-    flex: 1;
-    min-width: 0;
-    padding: 10px 12px;
-    overflow: hidden;
-  }
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: linear-gradient(90deg, rgba(99,102,241,.08), transparent);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+.card-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--primary2);
+  font-size: 11px;
+}
+.card-idx {
+  color: var(--text3);
+  font-size: 11px;
+  background: rgba(255,255,255,.04);
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+}
 
-  /* ── Meta prompt ── */
-  .meta-prompt {
-    font-size: 11px;
-    color: var(--muted);
-    padding: 4px 8px;
-    background: var(--code-bg);
-    border-radius: 4px;
-    margin-bottom: 8px;
-    font-style: italic;
-  }
-  .meta-prompt:empty { display: none; }
+/* ── Card body layout ── */
+.card-body { display: flex; }
 
-  /* ── Message bubbles ── */
-  .message { margin-bottom: 8px; }
-  .msg-role {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .05em;
-    margin-bottom: 4px;
-  }
-  .msg-role.user { color: #2b6cb0; }
-  .msg-role.assistant { color: #276749; }
+/* ── Image panel ── */
+.card-images {
+  flex: 0 0 220px;
+  border-right: 1px solid var(--border);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(0,0,0,.2);
+}
+.card-images:empty { display: none; }
+.card-img-wrap {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(0,0,0,.3);
+}
+.card-images img {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
 
-  .msg-body {
-    border-radius: 6px;
-    padding: 8px 10px;
-    font-size: 13px;
-  }
-  .msg-body.user {
-    background: var(--user-bg);
-    border: 1px solid var(--user-border);
-  }
-  .msg-body.assistant {
-    background: var(--assistant-bg);
-    border: 1px solid var(--assistant-border);
-  }
+/* ── Text panel ── */
+.card-text {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 
-  /* Think block */
-  .think-block {
-    margin: 4px 0;
-    border: 1px solid var(--think-border);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  .think-toggle {
-    background: var(--think-bg);
-    padding: 4px 8px;
-    font-size: 11px;
-    color: #b7791f;
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .think-toggle:hover { background: #fef3c7; }
-  .think-content {
-    padding: 8px;
-    font-size: 12px;
-    color: #744210;
-    white-space: pre-wrap;
-    word-break: break-word;
-    background: #fffdf5;
-    display: none;
-  }
-  .think-content.open { display: block; }
+/* ── Meta prompt ── */
+.meta-prompt {
+  font-size: 11px;
+  color: var(--text3);
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 5px 10px;
+  font-style: italic;
+}
 
-  .msg-text {
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
+/* ── Message ── */
+.message { display: flex; flex-direction: column; gap: 5px; }
+.msg-role {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.msg-role.user { color: #60a5fa; }
+.msg-role.user::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 6px #60a5fa; }
+.msg-role.assistant { color: var(--green); }
+.msg-role.assistant::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
 
-  /* inline image ref inside message */
-  .inline-img-ref {
-    display: inline-block;
-    background: var(--border);
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 11px;
-    color: var(--muted);
-    font-family: monospace;
-  }
+.msg-body {
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.msg-body.user {
+  background: var(--user-bg);
+  border: 1px solid var(--user-border);
+}
+.msg-body.assistant {
+  background: var(--asst-bg);
+  border: 1px solid var(--asst-border);
+}
 
-  /* ── Raw JSON toggle ── */
-  .raw-toggle {
-    padding: 6px 12px;
-    border-top: 1px solid var(--border);
-    background: var(--bg);
-    font-size: 11px;
-    color: var(--primary);
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-  .raw-toggle:hover { background: #edf2ff; }
-  .raw-content {
-    display: none;
-    padding: 10px 12px;
-    background: #1e1e2e;
-    color: #cdd6f4;
-    font-family: 'Fira Code', 'Cascadia Code', monospace;
-    font-size: 11px;
-    white-space: pre;
-    overflow-x: auto;
-    border-top: 1px solid #444;
-    max-height: 400px;
-    overflow-y: auto;
-  }
-  .raw-content.open { display: block; }
+.msg-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
 
-  /* ── Load more ── */
-  .load-more-sentinel { height: 60px; display: flex; align-items: center; justify-content: center; }
-  .load-more-btn {
-    padding: 8px 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: 13px;
-    color: var(--primary);
-    transition: background .15s;
-  }
-  .load-more-btn:hover { background: var(--bg); }
+/* ── Think block ── */
+.think-block {
+  border: 1px solid var(--think-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin: 4px 0;
+}
+.think-toggle {
+  background: var(--think-bg);
+  padding: 5px 10px;
+  font-size: 11px;
+  color: var(--amber);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background .15s;
+}
+.think-toggle:hover { background: rgba(251,191,36,.1); }
+.think-arrow { transition: transform .2s; }
+.think-content {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #d4a843;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(0,0,0,.15);
+  display: none;
+  border-top: 1px solid var(--think-border);
+}
+.think-content.open { display: block; }
+.think-toggle.open .think-arrow { transform: rotate(90deg); }
 
-  /* ── Status / errors ── */
-  .status {
-    text-align: center;
-    padding: 40px 20px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-  .error-msg {
-    background: #fff5f5;
-    border: 1px solid #fed7d7;
-    color: #c53030;
-    padding: 10px 14px;
-    border-radius: var(--radius);
-    margin: 12px 0;
-    font-size: 13px;
-  }
+/* Inline image reference tag */
+.inline-img-ref {
+  display: inline-block;
+  background: rgba(99,102,241,.12);
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--primary2);
+  font-family: monospace;
+  vertical-align: middle;
+}
 
-  /* ── Spinner ── */
-  .spinner {
-    width: 20px; height: 20px;
-    border: 2px solid var(--border);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin .6s linear infinite;
-    display: inline-block;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+/* ── Raw JSON ── */
+.raw-toggle {
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,.15);
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color .15s, background .15s;
+}
+.raw-toggle:hover { color: var(--primary2); background: rgba(99,102,241,.06); }
+.raw-arrow { transition: transform .2s; }
+.raw-content {
+  display: none;
+  padding: 12px 14px;
+  background: #070b14;
+  color: #a5b4fc;
+  font-family: 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
+  font-size: 11px;
+  white-space: pre;
+  overflow-x: auto;
+  border-top: 1px solid rgba(99,102,241,.15);
+  max-height: 420px;
+  overflow-y: auto;
+}
+.raw-content.open { display: block; }
+.raw-toggle.open .raw-arrow { transform: rotate(90deg); }
+
+/* ── Sentinel / load more ── */
+.sentinel {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text3);
+  font-size: 12px;
+  gap: 8px;
+}
+
+/* ── Spinner ── */
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(99,102,241,.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Status / error ── */
+.status {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text3);
+  font-size: 14px;
+}
+.status .hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text3);
+  opacity: .6;
+}
+.error-msg {
+  background: rgba(248,113,113,.08);
+  border: 1px solid rgba(248,113,113,.25);
+  color: var(--red);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  margin: 10px 0;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(99,102,241,.25); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,.45); }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1>📊 Data Viewer</h1>
-  <input id="pathInput" class="path-input" type="text" placeholder="输入数据目录路径，例如 /root/data/stem" value="/root/data/stem">
+<header class="header">
+  <div class="logo">
+    <div class="logo-icon">🔭</div>
+    <span class="logo-text">Data Viewer</span>
+  </div>
+  <input id="pathInput" class="path-input" type="text"
+    placeholder="/root/data/stem"
+    value="/root/data/stem">
   <button class="btn" onclick="navigate(pathInput.value.trim())">打开</button>
-</div>
+</header>
 
 <div id="breadcrumb" class="breadcrumb" style="display:none"></div>
 
 <div class="main" id="main">
-  <div class="status">输入目录路径后点击「打开」开始浏览</div>
+  <div class="status">
+    输入目录路径，点击「打开」开始浏览
+    <div class="hint">支持含 jsonl/ 子目录的数据集</div>
+  </div>
 </div>
 
 <script>
 // ── State ──
-let state = {
+const state = {
   currentPath: '',
   currentFile: '',
+  imagesDir: '',
+  hasImagesDir: false,
   offset: 0,
   limit: 20,
   loading: false,
   hasMore: false,
-  isDataDir: false,
-  hasImagesDir: false,
 };
 
 const mainEl = document.getElementById('main');
 const breadcrumbEl = document.getElementById('breadcrumb');
-let observer = null;
+let scrollObserver = null;
 
-// ── Navigation ──
+// ── Navigate ──
 async function navigate(dirPath) {
   if (!dirPath) return;
   try {
-    const res = await fetch('/api/browse?path=' + encodeURIComponent(dirPath));
+    const res = await fetch('/api/browse?path=' + enc(dirPath));
     const data = await res.json();
     if (data.error) return showError(data.error);
-
     state.currentPath = data.path;
-    state.isDataDir = data.isDataDir;
     state.hasImagesDir = !!data.hasImagesDir;
+    state.imagesDir = data.hasImagesDir ? data.path + '/images' : '';
     state.currentFile = '';
     state.offset = 0;
-
     updateBreadcrumb(data.path);
     renderBrowser(data);
-  } catch (e) {
-    showError(e.message);
-  }
+  } catch (e) { showError(e.message); }
 }
 
 function updateBreadcrumb(fullPath) {
   breadcrumbEl.style.display = 'flex';
   const parts = fullPath.replace(/\\/g, '/').split('/').filter(Boolean);
-  let html = '<span onclick="navigate(\'/\')">/ (根)</span>';
   let acc = '';
+  let html = `<a onclick="navigate('/')">~</a>`;
   parts.forEach((p, i) => {
     acc += '/' + p;
-    const path = acc;
-    html += '<span class="sep">/</span>';
-    if (i === parts.length - 1) {
-      html += `<span class="current">${esc(p)}</span>`;
-    } else {
-      html += `<span onclick="navigate('${esc(path)}')">${esc(p)}</span>`;
-    }
+    const pCopy = acc;
+    html += `<span class="sep">/</span>`;
+    if (i === parts.length - 1)
+      html += `<span class="cur">${esc(p)}</span>`;
+    else
+      html += `<a onclick="navigate('${esc(pCopy)}')">${esc(p)}</a>`;
   });
   breadcrumbEl.innerHTML = html;
 }
@@ -450,13 +567,9 @@ function renderBrowser(data) {
   disconnectObserver();
   let html = '';
 
-  if (data.isDataDir) {
-    html += renderFileSelector(data.path);
-  }
+  if (data.isDataDir) html += buildFileSelector();
 
   const dirs = data.items.filter(i => i.isDir);
-  const files = data.items.filter(i => !i.isDir);
-
   if (dirs.length) {
     html += '<div class="dir-grid">';
     dirs.forEach(item => {
@@ -468,299 +581,228 @@ function renderBrowser(data) {
     html += '</div>';
   }
 
-  if (files.length && !data.isDataDir) {
-    html += '<div class="dir-grid">';
-    files.forEach(item => {
-      html += `<div class="dir-item" onclick="openJsonlFile('${esc(item.path)}','${esc(data.path)}')">
-        <span class="icon">📄</span>
-        <span class="name">${esc(item.name)}</span>
-      </div>`;
-    });
-    html += '</div>';
-  }
-
-  if (!dirs.length && !data.isDataDir) {
+  if (!dirs.length && !data.isDataDir)
     html += '<div class="status">此目录为空或不含可浏览内容</div>';
-  }
 
   if (data.isDataDir) {
-    html += '<div id="waterfall" class="waterfall"></div>';
-    html += '<div class="load-more-sentinel" id="sentinel"></div>';
+    html += '<div id="feed" class="feed"></div>';
+    html += '<div id="sentinel" class="sentinel"></div>';
   }
 
   mainEl.innerHTML = html;
-
-  if (data.isDataDir) {
-    loadJsonlFiles(data.path);
-  }
+  if (data.isDataDir) loadJsonlFiles(data.path);
 }
 
 // ── File selector ──
-function renderFileSelector(dirPath) {
+function buildFileSelector() {
   return `<div class="file-selector">
-    <label>JSONL 文件：</label>
+    <label>JSONL 文件</label>
     <select class="file-select" id="fileSelect" onchange="onFileChange(this.value)">
       <option value="">-- 加载中 --</option>
     </select>
-    <span id="recordCount" style="font-size:12px;color:#718096"></span>
+    <span class="record-count" id="recordCount">-</span>
   </div>`;
 }
 
 async function loadJsonlFiles(dirPath) {
   try {
-    const res = await fetch('/api/jsonl-files?path=' + encodeURIComponent(dirPath));
+    const res = await fetch('/api/jsonl-files?path=' + enc(dirPath));
     const data = await res.json();
     if (data.error) return showError(data.error);
-
     const sel = document.getElementById('fileSelect');
     if (!sel) return;
-    if (!data.files.length) {
-      sel.innerHTML = '<option value="">无 .jsonl 文件</option>';
-      return;
-    }
+    if (!data.files.length) { sel.innerHTML = '<option>无 .jsonl 文件</option>'; return; }
     sel.innerHTML = data.files.map(f =>
       `<option value="${esc(f.path)}">${esc(f.name)}</option>`
     ).join('');
-
-    openJsonlFile(data.files[0].path, dirPath);
-  } catch (e) {
-    showError(e.message);
-  }
+    openFile(data.files[0].path);
+  } catch (e) { showError(e.message); }
 }
 
-function onFileChange(filePath) {
-  if (!filePath) return;
-  openJsonlFile(filePath, state.currentPath);
-}
+function onFileChange(fp) { if (fp) openFile(fp); }
 
-function openJsonlFile(filePath, dirPath) {
-  state.currentFile = filePath;
+function openFile(fp) {
+  state.currentFile = fp;
   state.offset = 0;
   state.hasMore = false;
-
-  const wf = document.getElementById('waterfall');
-  if (wf) wf.innerHTML = '';
-
   const sel = document.getElementById('fileSelect');
-  if (sel && filePath) sel.value = filePath;
-
-  setupSentinelObserver();
-  loadMoreRecords();
+  if (sel && fp) sel.value = fp;
+  const feed = document.getElementById('feed');
+  if (feed) feed.innerHTML = '';
+  setupObserver();
+  loadMore();
 }
 
 // ── Load records ──
-async function loadMoreRecords() {
+async function loadMore() {
   if (state.loading || !state.currentFile) return;
   if (state.offset > 0 && !state.hasMore) return;
-
   state.loading = true;
-  showSentinelSpinner();
-
+  setSentinel('spinner');
   try {
-    const url = `/api/records?file=${encodeURIComponent(state.currentFile)}&offset=${state.offset}&limit=${state.limit}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const url = `/api/records?file=${enc(state.currentFile)}&offset=${state.offset}&limit=${state.limit}`;
+    const data = await (await fetch(url)).json();
     if (data.error) { showError(data.error); return; }
-
-    appendRecords(data.records, state.currentPath, state.hasImagesDir);
+    appendCards(data.records);
     state.offset += data.records.length;
     state.hasMore = data.hasMore;
-
-    const countEl = document.getElementById('recordCount');
-    if (countEl) countEl.textContent = `已加载 ${state.offset} 条${data.hasMore ? '' : '（全部）'}`;
-  } catch (e) {
-    showError(e.message);
-  } finally {
+    const c = document.getElementById('recordCount');
+    if (c) c.textContent = `已加载 ${state.offset} 条${data.hasMore ? '' : ' · 全部'}`;
+  } catch (e) { showError(e.message); }
+  finally {
     state.loading = false;
-    hideSentinelSpinner();
+    setSentinel(state.hasMore ? '' : 'done');
   }
 }
 
-function appendRecords(records, dirPath, hasImagesDir) {
-  const wf = document.getElementById('waterfall');
-  if (!wf) return;
-
+function appendCards(records) {
+  const feed = document.getElementById('feed');
+  if (!feed) return;
   records.forEach(({ lineNum, raw }) => {
     let parsed = null;
-    try { parsed = JSON.parse(raw); } catch (e) { /* ignore */ }
-    const card = buildCard(lineNum, raw, parsed, dirPath, hasImagesDir);
-    wf.appendChild(card);
+    try { parsed = JSON.parse(raw); } catch {}
+    feed.appendChild(buildCard(lineNum, raw, parsed));
   });
 }
 
 // ── Card builder ──
-function buildCard(lineNum, raw, parsed, dirPath, hasImagesDir) {
-  const div = document.createElement('div');
-  div.className = 'record-card';
+function buildCard(lineNum, raw, parsed) {
+  const el = document.createElement('div');
+  el.className = 'record-card';
 
-  const id = parsed?.id || `#${lineNum}`;
-  const imagesDir = (hasImagesDir && dirPath) ? dirPath + '/images' : '';
-
-  // Collect all images and build formatted text
+  const id = parsed?.id || `record-${lineNum}`;
   let imagesHtml = '';
   let textHtml = '';
 
   if (parsed) {
-    // Meta prompt
-    const meta = (parsed.meta_prompt || []).filter(s => s && s.trim());
-    if (meta.length) {
-      textHtml += `<div class="meta-prompt">📌 ${esc(meta.join(' | '))}</div>`;
-    }
+    const meta = (parsed.meta_prompt || []).filter(s => s?.trim());
+    if (meta.length) textHtml += `<div class="meta-prompt">📌 ${esc(meta.join(' · '))}</div>`;
 
-    // Messages
     (parsed.data || []).forEach(msg => {
       const role = msg.role || 'unknown';
-      const contentItems = Array.isArray(msg.content) ? msg.content : [];
+      const items = Array.isArray(msg.content) ? msg.content : [];
 
-      // Collect images for left panel
-      contentItems.forEach(item => {
-        if (item.type === 'image') {
-          const relPath = item.image?.relative_path;
-          if (relPath && imagesDir) {
-            const fullPath = imagesDir + '/' + relPath;
-            imagesHtml += `<img src="/api/image?path=${encodeURIComponent(fullPath)}" loading="lazy" alt="${esc(relPath)}" title="${esc(relPath)}">`;
+      items.forEach(item => {
+        if (item.type === 'image' && state.imagesDir) {
+          const rel = item.image?.relative_path;
+          if (rel) {
+            const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}`;
+            imagesHtml += `<div class="card-img-wrap">
+              <img src="${src}" loading="lazy" alt="${esc(rel)}" title="${esc(rel)}">
+            </div>`;
           }
         }
       });
 
-      // Build text for right panel
-      textHtml += buildMessageHtml(role, contentItems);
+      textHtml += buildMsgHtml(role, items);
     });
   } else {
-    textHtml = `<div class="error-msg">JSON 解析失败</div>`;
+    textHtml = `<div class="error-msg">⚠ JSON 解析失败</div>`;
   }
 
-  div.innerHTML = `
+  el.innerHTML = `
     <div class="card-header">
       <span class="card-id">${esc(id)}</span>
-      <span>#${lineNum}</span>
+      <span class="card-idx">#${lineNum}</span>
     </div>
     <div class="card-body">
       <div class="card-images">${imagesHtml}</div>
       <div class="card-text">${textHtml}</div>
     </div>
     <div class="raw-toggle" onclick="toggleRaw(this)">
-      <span class="toggle-arrow">▶</span> 原始 JSONL
+      <span class="raw-arrow">▶</span> 原始 JSONL
     </div>
-    <div class="raw-content">${esc(tryPrettyJson(raw))}</div>
+    <div class="raw-content">${esc(prettyJson(raw))}</div>
   `;
-  return div;
+  return el;
 }
 
-function buildMessageHtml(role, contentItems) {
-  const roleLabel = role === 'user' ? '用户' : role === 'assistant' ? '助手' : role;
-  let bodyHtml = '';
-
-  contentItems.forEach(item => {
+function buildMsgHtml(role, items) {
+  const label = role === 'user' ? '用户' : role === 'assistant' ? '助手' : role;
+  let body = '';
+  items.forEach(item => {
     if (item.type === 'text') {
-      const str = item.text?.string || item.text || '';
-      if (role === 'assistant') {
-        bodyHtml += renderAssistantText(str);
-      } else {
-        bodyHtml += `<span class="msg-text">${esc(str)}</span>`;
-      }
+      const s = item.text?.string ?? item.text ?? '';
+      body += role === 'assistant' ? renderAssistant(s) : `<span class="msg-text">${esc(s)}</span>`;
     } else if (item.type === 'image') {
-      const relPath = item.image?.relative_path || '';
-      bodyHtml += `<span class="inline-img-ref">🖼 ${esc(relPath)}</span>`;
+      body += `<span class="inline-img-ref">🖼 ${esc(item.image?.relative_path || '')}</span> `;
     }
   });
-
   return `<div class="message">
-    <div class="msg-role ${role}">${esc(roleLabel)}</div>
-    <div class="msg-body ${role}">${bodyHtml}</div>
+    <div class="msg-role ${role}">${esc(label)}</div>
+    <div class="msg-body ${role}">${body}</div>
   </div>`;
 }
 
-function renderAssistantText(text) {
-  // Extract <think>...</think> blocks
-  const thinkRe = /<think>([\s\S]*?)<\/think>/g;
-  let result = '';
-  let lastIdx = 0;
-  let m;
-
-  while ((m = thinkRe.exec(text)) !== null) {
-    const before = text.slice(lastIdx, m.index);
-    if (before) result += `<span class="msg-text">${esc(before)}</span>`;
-
-    const thinkId = 'think_' + Math.random().toString(36).slice(2);
-    result += `<div class="think-block">
-      <div class="think-toggle" onclick="toggleThink('${thinkId}')">
-        <span>💭</span> 思考过程 <span id="${thinkId}_arrow">▶</span>
+function renderAssistant(text) {
+  const re = /<think>([\s\S]*?)<\/think>/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    const before = text.slice(last, m.index);
+    if (before) out += `<span class="msg-text">${esc(before)}</span>`;
+    const id = 'tk_' + Math.random().toString(36).slice(2);
+    out += `<div class="think-block">
+      <div class="think-toggle" id="${id}_btn" onclick="toggleThink('${id}')">
+        <span class="think-arrow">▶</span>💭 思考过程
       </div>
-      <div class="think-content" id="${thinkId}">${esc(m[1])}</div>
+      <div class="think-content" id="${id}">${esc(m[1])}</div>
     </div>`;
-    lastIdx = m.index + m[0].length;
+    last = m.index + m[0].length;
   }
-
-  const rest = text.slice(lastIdx);
-  if (rest) result += `<span class="msg-text">${esc(rest)}</span>`;
-  return result;
+  const rest = text.slice(last);
+  if (rest) out += `<span class="msg-text">${esc(rest)}</span>`;
+  return out;
 }
 
-// ── Toggle helpers ──
-function toggleRaw(el) {
-  const content = el.nextElementSibling;
-  const arrow = el.querySelector('.toggle-arrow');
+// ── Toggles ──
+function toggleRaw(btn) {
+  const content = btn.nextElementSibling;
   const open = content.classList.toggle('open');
-  arrow.textContent = open ? '▼' : '▶';
+  btn.classList.toggle('open', open);
 }
-
 function toggleThink(id) {
   const el = document.getElementById(id);
-  const arrow = document.getElementById(id + '_arrow');
+  const btn = document.getElementById(id + '_btn');
   if (!el) return;
   const open = el.classList.toggle('open');
-  if (arrow) arrow.textContent = open ? '▼' : '▶';
+  btn?.classList.toggle('open', open);
 }
 
-// ── IntersectionObserver for infinite scroll ──
-function setupSentinelObserver() {
+// ── Infinite scroll ──
+function setupObserver() {
   disconnectObserver();
   const sentinel = document.getElementById('sentinel');
   if (!sentinel) return;
-  observer = new IntersectionObserver(entries => {
-    if (entries[0].isIntersecting) loadMoreRecords();
-  }, { rootMargin: '200px' });
-  observer.observe(sentinel);
+  scrollObserver = new IntersectionObserver(
+    entries => { if (entries[0].isIntersecting) loadMore(); },
+    { rootMargin: '300px' }
+  );
+  scrollObserver.observe(sentinel);
 }
-
 function disconnectObserver() {
-  if (observer) { observer.disconnect(); observer = null; }
+  if (scrollObserver) { scrollObserver.disconnect(); scrollObserver = null; }
 }
-
-function showSentinelSpinner() {
-  const s = document.getElementById('sentinel');
-  if (s) s.innerHTML = '<div class="spinner"></div>';
-}
-
-function hideSentinelSpinner() {
+function setSentinel(mode) {
   const s = document.getElementById('sentinel');
   if (!s) return;
-  if (!state.hasMore) {
-    s.innerHTML = state.offset > 0 ? '<span style="color:#718096;font-size:12px">— 已加载全部 —</span>' : '';
-  } else {
-    s.innerHTML = '';
-  }
+  if (mode === 'spinner') s.innerHTML = '<div class="spinner"></div>';
+  else if (mode === 'done') s.innerHTML = '<span>— 已加载全部数据 —</span>';
+  else s.innerHTML = '';
 }
 
 // ── Utilities ──
+const enc = s => encodeURIComponent(s);
 function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
-function tryPrettyJson(raw) {
+function prettyJson(raw) {
   try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
 }
-
 function showError(msg) {
   mainEl.innerHTML = `<div class="error-msg">❌ ${esc(msg)}</div>`;
 }
 
-// ── Enter key on path input ──
+// Enter key
 document.getElementById('pathInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') navigate(e.target.value.trim());
 });
