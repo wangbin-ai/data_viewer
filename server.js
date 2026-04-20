@@ -46,7 +46,8 @@ app.get('/api/browse', (req, res) => {
     res.json({
       path: dirPath,
       items,
-      isDataDir: hasJsonlDir && hasImagesDir,
+      isDataDir: hasJsonlDir,   // images dir is optional
+      hasImagesDir,
     });
   } catch (e) {
     res.status(400).json({ error: e.message });

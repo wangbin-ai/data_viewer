@@ -400,6 +400,7 @@ let state = {
   loading: false,
   hasMore: false,
   isDataDir: false,
+  hasImagesDir: false,
 };
 
 const mainEl = document.getElementById('main');
@@ -416,6 +417,7 @@ async function navigate(dirPath) {
 
     state.currentPath = data.path;
     state.isDataDir = data.isDataDir;
+    state.hasImagesDir = !!data.hasImagesDir;
     state.currentFile = '';
     state.offset = 0;
 
@@ -560,7 +562,7 @@ async function loadMoreRecords() {
     const data = await res.json();
     if (data.error) { showError(data.error); return; }
 
-    appendRecords(data.records, state.currentPath);
+    appendRecords(data.records, state.currentPath, state.hasImagesDir);
     state.offset += data.records.length;
     state.hasMore = data.hasMore;
 
@@ -574,25 +576,25 @@ async function loadMoreRecords() {
   }
 }
 
-function appendRecords(records, dirPath) {
+function appendRecords(records, dirPath, hasImagesDir) {
   const wf = document.getElementById('waterfall');
   if (!wf) return;
 
   records.forEach(({ lineNum, raw }) => {
     let parsed = null;
     try { parsed = JSON.parse(raw); } catch (e) { /* ignore */ }
-    const card = buildCard(lineNum, raw, parsed, dirPath);
+    const card = buildCard(lineNum, raw, parsed, dirPath, hasImagesDir);
     wf.appendChild(card);
   });
 }
 
 // ── Card builder ──
-function buildCard(lineNum, raw, parsed, dirPath) {
+function buildCard(lineNum, raw, parsed, dirPath, hasImagesDir) {
   const div = document.createElement('div');
   div.className = 'record-card';
 
   const id = parsed?.id || `#${lineNum}`;
-  const imagesDir = dirPath ? dirPath + '/images' : '';
+  const imagesDir = (hasImagesDir && dirPath) ? dirPath + '/images' : '';
 
   // Collect all images and build formatted text
   let imagesHtml = '';
