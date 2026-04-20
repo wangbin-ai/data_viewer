@@ -16,6 +16,30 @@ function safePath(p) {
   return path.normalize(p);
 }
 
+// Recursively collect all .jsonl files under a directory (depth-limited).
+function collectJsonlFiles(dir, maxDepth = 6, results = []) {
+  if (maxDepth <= 0) return results;
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return results; }
+  const files = entries.filter(e => !e.isDirectory() && e.name.endsWith('.jsonl'));
+  files.forEach(f => results.push({ name: f.name, path: path.join(dir, f.name) }));
+  entries.filter(e => e.isDirectory()).forEach(e =>
+    collectJsonlFiles(path.join(dir, e.name), maxDepth - 1, results)
+  );
+  return results;
+}
+
+// Check whether a directory (or any subdir) has jsonl files, up to maxDepth.
+function hasAnyJsonl(dir, maxDepth = 6) {
+  if (maxDepth <= 0) return false;
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+  if (entries.some(e => !e.isDirectory() && e.name.endsWith('.jsonl'))) return true;
+  return entries.filter(e => e.isDirectory()).some(e =>
+    hasAnyJsonl(path.join(dir, e.name), maxDepth - 1)
+  );
+}
+
 // Browse a directory
 app.get('/api/browse', (req, res) => {
   const dirPath = safePath(req.query.path);
@@ -42,36 +66,30 @@ app.get('/api/browse', (req, res) => {
       fs.statSync(path.join(dirPath, 'jsonl')).isDirectory();
     const hasImagesDir = fs.existsSync(path.join(dirPath, 'images')) &&
       fs.statSync(path.join(dirPath, 'images')).isDirectory();
-    // Also treat dir as data dir when .jsonl files live directly in it
-    const hasJsonlFiles = !hasJsonlDir &&
-      entries.some(e => !e.isDirectory() && e.name.endsWith('.jsonl'));
+    const isDataDir = hasJsonlDir || hasAnyJsonl(dirPath);
 
-    res.json({
-      path: dirPath,
-      items,
-      isDataDir: hasJsonlDir || hasJsonlFiles,
-      hasImagesDir,
-    });
+    res.json({ path: dirPath, items, isDataDir, hasImagesDir });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-// List jsonl files inside a data dir.
-// Looks in jsonl/ subdir first; falls back to the dir itself.
+// List jsonl files: jsonl/ subdir → current dir → recursive subdir search
 app.get('/api/jsonl-files', (req, res) => {
   const dirPath = safePath(req.query.path);
   if (!dirPath) return res.status(400).json({ error: 'Invalid path' });
 
   try {
+    // 1. Dedicated jsonl/ subdir
     const subdir = path.join(dirPath, 'jsonl');
-    const jsonlDir = fs.existsSync(subdir) && fs.statSync(subdir).isDirectory()
-      ? subdir
-      : dirPath;
-    const files = fs.readdirSync(jsonlDir)
-      .filter(f => f.endsWith('.jsonl'))
-      .sort()
-      .map(f => ({ name: f, path: path.join(jsonlDir, f) }));
+    if (fs.existsSync(subdir) && fs.statSync(subdir).isDirectory()) {
+      const files = fs.readdirSync(subdir)
+        .filter(f => f.endsWith('.jsonl')).sort()
+        .map(f => ({ name: f, path: path.join(subdir, f) }));
+      return res.json({ files });
+    }
+    // 2. Recursively collect from the whole subtree
+    const files = collectJsonlFiles(dirPath).sort((a, b) => a.path.localeCompare(b.path));
     res.json({ files });
   } catch (e) {
     res.status(400).json({ error: e.message });
