@@ -721,9 +721,16 @@ function buildCard(lineNum, raw, parsed) {
     const meta = (parsed.meta_prompt || []).filter(s => s?.trim());
     if (meta.length) textHtml += `<div class="meta-prompt">📌 ${esc(meta.join(' · '))}</div>`;
 
-    (parsed.data || []).forEach(msg => {
+    // Support: {data:[...]}, {messages:[...]}, root array
+    const msgs = Array.isArray(parsed.data) ? parsed.data
+      : Array.isArray(parsed.messages) ? parsed.messages
+      : Array.isArray(parsed) ? parsed : [];
+
+    msgs.forEach(msg => {
       const role = msg.role || 'unknown';
-      const items = Array.isArray(msg.content) ? msg.content : [];
+      // content can be an array of typed items OR a plain string
+      const items = Array.isArray(msg.content) ? msg.content
+        : (typeof msg.content === 'string' ? [{ type: 'text', text: { string: msg.content } }] : []);
 
       items.forEach(item => {
         if (item.type === 'image' && state.imagesDir) {
