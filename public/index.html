@@ -526,6 +526,48 @@ body::before {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(99,102,241,.25); border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,.45); }
+
+/* ── Back to top ── */
+.back-top {
+  position: fixed;
+  right: 28px;
+  bottom: 36px;
+  z-index: 200;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), #4f46e5);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(99,102,241,.45);
+  opacity: 0;
+  transform: translateY(16px) scale(.85);
+  transition: opacity .3s, transform .3s;
+  pointer-events: none;
+}
+.back-top.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.back-top:hover {
+  box-shadow: 0 4px 28px rgba(99,102,241,.7);
+  transform: translateY(-2px) scale(1.07);
+}
+.back-top:active { transform: scale(.95); }
+.back-top svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* progress ring */
+.back-top-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(rgba(255,255,255,.35) var(--pct, 0%), transparent var(--pct, 0%));
+  border-radius: 50%;
+}
 </style>
 </head>
 <body>
@@ -542,6 +584,11 @@ body::before {
 </header>
 
 <div id="breadcrumb" class="breadcrumb" style="display:none"></div>
+
+<button class="back-top" id="backTop" title="回到顶部" onclick="scrollToTop()">
+  <div class="back-top-ring" id="backTopRing"></div>
+  <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+</button>
 
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <span class="lightbox-close" onclick="closeLightbox()">✕</span>
@@ -863,6 +910,23 @@ function closeLightbox() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeLightbox();
 });
+
+// ── Back to top ──
+const backTopBtn = document.getElementById('backTop');
+const backTopRing = document.getElementById('backTopRing');
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+window.addEventListener('scroll', () => {
+  const scrolled = window.scrollY;
+  const total = document.documentElement.scrollHeight - window.innerHeight;
+  const pct = total > 0 ? Math.round((scrolled / total) * 100) : 0;
+
+  backTopBtn.classList.toggle('visible', scrolled > 300);
+  backTopRing.style.setProperty('--pct', pct + '%');
+}, { passive: true });
 
 // Enter key
 document.getElementById('pathInput').addEventListener('keydown', e => {
