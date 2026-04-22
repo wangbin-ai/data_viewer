@@ -610,7 +610,7 @@ const state = {
   imagesDir: '',
   hasImagesDir: false,
   offset: 0,
-  limit: 20,
+  limit: 5,
   loading: false,
   hasMore: false,
 };
@@ -748,11 +748,17 @@ async function loadMore() {
 function appendCards(records) {
   const feed = document.getElementById('feed');
   if (!feed) return;
-  records.forEach(({ lineNum, raw }) => {
+  // Render one card per animation frame to avoid blocking the main thread
+  let i = 0;
+  function renderNext() {
+    if (i >= records.length) return;
+    const { lineNum, raw } = records[i++];
     let parsed = null;
     try { parsed = JSON.parse(raw); } catch {}
     feed.appendChild(buildCard(lineNum, raw, parsed));
-  });
+    requestAnimationFrame(renderNext);
+  }
+  requestAnimationFrame(renderNext);
 }
 
 // ── Card builder ──
