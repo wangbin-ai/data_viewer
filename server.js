@@ -115,6 +115,13 @@ app.get('/api/records', async (req, res) => {
 const CACHE_DIR = path.join(os.tmpdir(), 'data_viewer_cache');
 fs.mkdirSync(CACHE_DIR, { recursive: true });
 
+// Evict the oldest entry when a Map exceeds maxSize (FIFO)
+function mapSet(map, key, value, maxSize = 30) {
+  if (!map.has(key) && map.size >= maxSize)
+    map.delete(map.keys().next().value);
+  map.set(key, value);
+}
+
 // imagesDir → Promise<Map<filename, tarFilePath>>
 const dirIndexPromises = new Map();
 // tarFilePath → Promise<cacheDir>
@@ -144,7 +151,7 @@ function buildDirIndex(imagesDir) {
     return index;
   })();
 
-  dirIndexPromises.set(imagesDir, promise);
+  mapSet(dirIndexPromises, imagesDir, promise);
   return promise;
 }
 
@@ -159,7 +166,7 @@ function extractTar(tarPath) {
     .then(() => outDir)
     .catch(e => { tarExtractPromises.delete(tarPath); throw e; });
 
-  tarExtractPromises.set(tarPath, promise);
+  mapSet(tarExtractPromises, tarPath, promise);
   return promise;
 }
 
