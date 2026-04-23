@@ -745,10 +745,13 @@ async function loadMore() {
   }
 }
 
+// Max rendered cards in the DOM at once. Older cards are replaced
+// with a height-preserving spacer so scroll position stays stable.
+const MAX_DOM_CARDS = 30;
+
 function appendCards(records) {
   const feed = document.getElementById('feed');
   if (!feed) return;
-  // Render one card per animation frame to avoid blocking the main thread
   let i = 0;
   function renderNext() {
     if (i >= records.length) return;
@@ -756,9 +759,34 @@ function appendCards(records) {
     let parsed = null;
     try { parsed = JSON.parse(raw); } catch {}
     feed.appendChild(buildCard(lineNum, raw, parsed));
+    pruneCards(feed);
     requestAnimationFrame(renderNext);
   }
   requestAnimationFrame(renderNext);
+}
+
+function pruneCards(feed) {
+  const cards = feed.querySelectorAll('.record-card');
+  if (cards.length <= MAX_DOM_CARDS) return;
+
+  const excess = cards.length - MAX_DOM_CARDS;
+
+  // Measure total visual height of cards to remove (includes gaps via getBoundingClientRect)
+  const first = cards[0];
+  const last  = cards[excess - 1];
+  const removedHeight =
+    last.getBoundingClientRect().bottom - first.getBoundingClientRect().top;
+
+  for (let j = 0; j < excess; j++) cards[j].remove();
+
+  // Grow (or create) the top spacer to replace removed height
+  let spacer = feed.querySelector('.feed-spacer');
+  if (!spacer) {
+    spacer = document.createElement('div');
+    spacer.className = 'feed-spacer';
+    feed.prepend(spacer);
+  }
+  spacer.style.height = (parseFloat(spacer.style.height) || 0) + removedHeight + 'px';
 }
 
 // ── Card builder ──
@@ -791,7 +819,7 @@ function buildCard(lineNum, raw, parsed) {
           if (rel) {
             const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}`;
             imagesHtml += `<div class="card-img-wrap">
-              <img src="${src}" loading="lazy" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
+              <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
             </div>`;
           }
         }
