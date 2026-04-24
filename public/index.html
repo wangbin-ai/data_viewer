@@ -607,6 +607,7 @@ body::before {
 const state = {
   currentPath: '',
   currentFile: '',
+  jsonlBase: '',
   imagesDir: '',
   hasImagesDir: false,
   offset: 0,
@@ -713,6 +714,8 @@ function onFileChange(fp) { if (fp) openFile(fp); }
 
 function openFile(fp) {
   state.currentFile = fp;
+  // Extract stem (e.g. "0000001" from "/path/to/0000001.jsonl") for tarinfo lookup
+  state.jsonlBase = (fp.split('/').pop() || '').replace(/\.jsonl$/i, '');
   state.offset = 0;
   state.hasMore = false;
   const sel = document.getElementById('fileSelect');
@@ -817,7 +820,7 @@ function buildCard(lineNum, raw, parsed) {
         if (item.type === 'image' && state.imagesDir) {
           const rel = item.image?.relative_path;
           if (rel) {
-            const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}`;
+            const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}&jsonlBase=${enc(state.jsonlBase)}`;
             imagesHtml += `<div class="card-img-wrap">
               <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
             </div>`;

@@ -198,33 +198,105 @@ function findFileRecursive(dir, name) {
   return null;
 }
 
+// ── Tarinfo-based image access ──
+// Cache: tarinfPath → Promise<Object>
+const tarinfoCache = new Map();
+
+async function loadTarinfo(tarinfPath) {
+  if (tarinfoCache.has(tarinfPath)) return tarinfoCache.get(tarinfPath);
+  const p = fs.promises.readFile(tarinfPath, 'utf8')
+    .then(JSON.parse)
+    .catch(() => null);
+  mapSet(tarinfoCache, tarinfPath, p, 50);
+  return p;
+}
+
+// Given a jsonlBase like "0000001", find the matching tar in imagesDir.
+// Tries: exact base.tar → numeric suffix match against part_NNN.tar etc.
+function findTarForBase(imagesDir, base) {
+  const exact = path.join(imagesDir, base + '.tar');
+  if (fs.existsSync(exact)) return exact;
+
+  // Extract trailing number from base, match against any tar's number
+  const numMatch = base.match(/(\d+)$/);
+  if (!numMatch) return null;
+  const num = parseInt(numMatch[1], 10);
+
+  let entries;
+  try { entries = fs.readdirSync(imagesDir); } catch { return null; }
+
+  for (const f of entries) {
+    if (!/\.(tar|tar\.gz|tgz)$/i.test(f)) continue;
+    const m = f.match(/(\d+)/);
+    if (m && parseInt(m[1], 10) === num) return path.join(imagesDir, f);
+  }
+  return null;
+}
+
+// Read raw image bytes from a tar at a specific byte offset (no full extraction needed).
+async function extractImageByOffset(tarFile, offsetData, size) {
+  const buf = Buffer.alloc(size);
+  const handle = await fs.promises.open(tarFile, 'r');
+  try {
+    await handle.read(buf, 0, size, offsetData);
+  } finally {
+    await handle.close();
+  }
+  return buf;
+}
+
+const MIME = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg',
+               gif:'image/gif', webp:'image/webp', bmp:'image/bmp' };
+
 // Serve an image.
-// Accepts ?base=<images-dir>&rel=<relative-path-inside-images-dir>
-// Falls back to tar extraction when the file isn't on disk directly.
+// ?base=<images-dir>  &rel=<relative-path>  [&jsonlBase=<jsonl-stem>]
+//
+// Priority:
+//  1. File exists directly on disk
+//  2. Tarinfo-based offset read (new format, requires jsonlBase)
+//  3. Full-tar extraction + path lookup (original format)
 app.get('/api/image', async (req, res) => {
-  const base = safePath(req.query.base);
-  const rel  = (req.query.rel || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const base      = safePath(req.query.base);
+  const rel       = (req.query.rel || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  const jsonlBase = (req.query.jsonlBase || '').trim();
   if (!base || !rel) return res.status(400).json({ error: 'Missing base or rel param' });
 
-  const imgPath = path.join(base, rel);
   const filename = path.basename(rel);
+  const imgPath  = path.join(base, rel);
 
-  // Serve directly if the file already exists on disk
+  // 1. Direct file on disk
   if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
 
+  // 2. Tarinfo offset-based read
+  if (jsonlBase) {
+    const tarinfPath = path.join(base, jsonlBase + '_tarinfo.json');
+    if (fs.existsSync(tarinfPath)) {
+      try {
+        const tarinfo = await loadTarinfo(tarinfPath);
+        const entry   = tarinfo?.[rel] ?? tarinfo?.[filename];
+        if (entry?.offset_data != null && entry?.size) {
+          const tarFile = findTarForBase(base, jsonlBase);
+          if (tarFile) {
+            const imgData = await extractImageByOffset(tarFile, entry.offset_data, entry.size);
+            const ext  = path.extname(filename).toLowerCase().slice(1);
+            res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+            return res.send(imgData);
+          }
+        }
+      } catch { /* fall through */ }
+    }
+  }
+
+  // 3. Full-tar extraction (original format)
   try {
     const index = await buildDirIndex(base);
-    // 1st: exact relative path  2nd: basename fallback
     const tarPath = index.get(rel) || index.get('$' + filename);
     if (!tarPath) return res.status(404).send('Image not found in any tar');
 
     const cacheDir = await extractTar(tarPath);
-
-    // Direct path (fast, handles subdirs correctly)
-    const direct = path.join(cacheDir, rel);
+    const direct   = path.join(cacheDir, rel);
     if (fs.existsSync(direct)) return res.sendFile(direct);
 
-    // Fallback: recursive basename search
     const found = findFileRecursive(cacheDir, filename);
     if (!found) return res.status(404).send('File missing after extraction');
     res.sendFile(found);
