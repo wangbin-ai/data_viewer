@@ -122,9 +122,9 @@ function mapSet(map, key, value, maxSize = 30) {
   map.set(key, value);
 }
 
-// imagesDir → Promise<Map<filename, tarFilePath>>
+// imagesDir → Promise<Map<relPath | '$'+basename, tarFilePath>>
 const dirIndexPromises = new Map();
-// tarFilePath → Promise<cacheDir>
+// tarFilePath → Promise<cacheDir>  (never evicted; resolved promises are tiny)
 const tarExtractPromises = new Map();
 
 function buildDirIndex(imagesDir) {
@@ -142,8 +142,12 @@ function buildDirIndex(imagesDir) {
         await tar.list({
           file: tarPath,
           onentry(entry) {
-            const base = path.basename(entry.path);
-            if (base && !index.has(base)) index.set(base, tarPath);
+            // Normalize: strip leading ./ and use forward slashes
+            const rel = entry.path.replace(/^\.\//, '').replace(/\\/g, '/');
+            if (!rel || rel.endsWith('/')) return;            // skip dirs
+            if (!index.has(rel)) index.set(rel, tarPath);    // exact rel path
+            const fbKey = '$' + path.basename(rel);
+            if (!index.has(fbKey)) index.set(fbKey, tarPath); // basename fallback
           },
         });
       } catch { /* skip unreadable tar */ }
@@ -160,18 +164,29 @@ function extractTar(tarPath) {
 
   const safeKey = Buffer.from(tarPath).toString('base64').replace(/[/+=]/g, '_');
   const outDir = path.join(CACHE_DIR, safeKey);
+  const marker = path.join(outDir, '.done');
+
+  // Disk cache already complete — skip extraction, re-add to Map
+  if (fs.existsSync(marker)) {
+    const p = Promise.resolve(outDir);
+    tarExtractPromises.set(tarPath, p);
+    return p;
+  }
+
   fs.mkdirSync(outDir, { recursive: true });
 
   const promise = tar.extract({ file: tarPath, cwd: outDir })
-    .then(() => outDir)
+    .then(() => { fs.writeFileSync(marker, ''); return outDir; })
     .catch(e => { tarExtractPromises.delete(tarPath); throw e; });
 
-  mapSet(tarExtractPromises, tarPath, promise);
+  // No size cap: a resolved Promise uses only ~a few hundred bytes
+  tarExtractPromises.set(tarPath, promise);
   return promise;
 }
 
 function findFileRecursive(dir, name) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === '.done') continue;
     const fp = path.join(dir, e.name);
     if (e.isDirectory()) {
       const found = findFileRecursive(fp, name);
@@ -187,8 +202,8 @@ function findFileRecursive(dir, name) {
 // Accepts ?base=<images-dir>&rel=<relative-path-inside-images-dir>
 // Falls back to tar extraction when the file isn't on disk directly.
 app.get('/api/image', async (req, res) => {
-  const base = safePath(req.query.base);   // e.g. /root/data/stem/images
-  const rel  = req.query.rel;              // e.g. 新能源分析/257.png
+  const base = safePath(req.query.base);
+  const rel  = (req.query.rel || '').replace(/\\/g, '/').replace(/^\.\//, '');
   if (!base || !rel) return res.status(400).json({ error: 'Missing base or rel param' });
 
   const imgPath = path.join(base, rel);
@@ -197,16 +212,21 @@ app.get('/api/image', async (req, res) => {
   // Serve directly if the file already exists on disk
   if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
 
-  // Search for the file inside tar archives in the base images directory
   try {
     const index = await buildDirIndex(base);
-    const tarPath = index.get(filename);
+    // 1st: exact relative path  2nd: basename fallback
+    const tarPath = index.get(rel) || index.get('$' + filename);
     if (!tarPath) return res.status(404).send('Image not found in any tar');
 
     const cacheDir = await extractTar(tarPath);
+
+    // Direct path (fast, handles subdirs correctly)
+    const direct = path.join(cacheDir, rel);
+    if (fs.existsSync(direct)) return res.sendFile(direct);
+
+    // Fallback: recursive basename search
     const found = findFileRecursive(cacheDir, filename);
     if (!found) return res.status(404).send('File missing after extraction');
-
     res.sendFile(found);
   } catch (e) {
     res.status(500).json({ error: e.message });
