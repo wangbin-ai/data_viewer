@@ -248,6 +248,32 @@ async function extractImageByOffset(tarFile, offsetData, size) {
 const MIME = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg',
                gif:'image/gif', webp:'image/webp', bmp:'image/bmp' };
 
+// Detect image MIME type from the first bytes of a buffer (magic bytes).
+// Used for .img and any extension-less files where the extension alone is unreliable.
+function detectMimeFromBytes(buf) {
+  if (!buf || buf.length < 3) return 'image/png';
+  if (buf[0]===0x89 && buf[1]===0x50 && buf[2]===0x4E) return 'image/png';   // PNG
+  if (buf[0]===0xFF && buf[1]===0xD8 && buf[2]===0xFF) return 'image/jpeg';  // JPEG
+  if (buf[0]===0x47 && buf[1]===0x49 && buf[2]===0x46) return 'image/gif';   // GIF
+  if (buf.length>=12 && buf[0]===0x52 && buf[1]===0x49 &&
+      buf[8]===0x57 && buf[9]===0x45) return 'image/webp';                    // WEBP (RIFF…WEBP)
+  if (buf[0]===0x42 && buf[1]===0x4D) return 'image/bmp';                    // BMP
+  return 'image/png';  // safe default for unknown .img files
+}
+
+// Send a file with correct Content-Type.
+// For .img files the extension is useless, so we detect from magic bytes.
+async function sendImageFile(res, filePath) {
+  const ext = path.extname(filePath).toLowerCase().slice(1);
+  if (ext !== 'img') return res.sendFile(filePath);
+
+  const peek = Buffer.alloc(12);
+  const handle = await fs.promises.open(filePath, 'r');
+  try { await handle.read(peek, 0, 12, 0); } finally { await handle.close(); }
+  res.setHeader('Content-Type', detectMimeFromBytes(peek));
+  fs.createReadStream(filePath).pipe(res);
+}
+
 // Serve an image.
 // ?base=<images-dir>  &rel=<relative-path>  [&jsonlBase=<jsonl-stem>]
 //
@@ -265,9 +291,9 @@ app.get('/api/image', async (req, res) => {
   const imgPath  = path.join(base, rel);
 
   // 1. Direct file on disk
-  if (fs.existsSync(imgPath)) return res.sendFile(imgPath);
+  if (fs.existsSync(imgPath)) return sendImageFile(res, imgPath);
 
-  // 2. Tarinfo offset-based read
+  // 2. Tarinfo offset-based read (key is the full relative path, e.g. "VQA-CDIP/11/tob03615.img")
   if (jsonlBase) {
     const tarinfPath = path.join(base, jsonlBase + '_tarinfo.json');
     if (fs.existsSync(tarinfPath)) {
@@ -278,8 +304,8 @@ app.get('/api/image', async (req, res) => {
           const tarFile = findTarForBase(base, jsonlBase);
           if (tarFile) {
             const imgData = await extractImageByOffset(tarFile, entry.offset_data, entry.size);
-            const ext  = path.extname(filename).toLowerCase().slice(1);
-            res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+            // Always detect from magic bytes — handles .img and any mis-labelled extension
+            res.setHeader('Content-Type', detectMimeFromBytes(imgData));
             return res.send(imgData);
           }
         }
@@ -287,7 +313,7 @@ app.get('/api/image', async (req, res) => {
     }
   }
 
-  // 3. Full-tar extraction (original format)
+  // 3. Full-tar extraction (original format without tarinfo)
   try {
     const index = await buildDirIndex(base);
     const tarPath = index.get(rel) || index.get('$' + filename);
@@ -295,11 +321,11 @@ app.get('/api/image', async (req, res) => {
 
     const cacheDir = await extractTar(tarPath);
     const direct   = path.join(cacheDir, rel);
-    if (fs.existsSync(direct)) return res.sendFile(direct);
+    if (fs.existsSync(direct)) return sendImageFile(res, direct);
 
     const found = findFileRecursive(cacheDir, filename);
     if (!found) return res.status(404).send('File missing after extraction');
-    res.sendFile(found);
+    return sendImageFile(res, found);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
