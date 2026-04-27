@@ -4,6 +4,7 @@ const path = require('path');
 const readline = require('readline');
 const os = require('os');
 const tar = require('tar');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = 3008;
@@ -249,7 +250,6 @@ const MIME = { png:'image/png', jpg:'image/jpeg', jpeg:'image/jpeg',
                gif:'image/gif', webp:'image/webp', bmp:'image/bmp' };
 
 // Detect image MIME type from the first bytes of a buffer (magic bytes).
-// Used for .img and any extension-less files where the extension alone is unreliable.
 function detectMimeFromBytes(buf) {
   if (!buf || buf.length < 3) return 'image/png';
   if (buf[0]===0x89 && buf[1]===0x50 && buf[2]===0x4E) return 'image/png';   // PNG
@@ -258,20 +258,31 @@ function detectMimeFromBytes(buf) {
   if (buf.length>=12 && buf[0]===0x52 && buf[1]===0x49 &&
       buf[8]===0x57 && buf[9]===0x45) return 'image/webp';                    // WEBP (RIFF…WEBP)
   if (buf[0]===0x42 && buf[1]===0x4D) return 'image/bmp';                    // BMP
-  return 'image/png';  // safe default for unknown .img files
+  // TIFF: little-endian (49 49 2A 00) or big-endian (4D 4D 00 2A)
+  if (buf.length>=4 && buf[0]===0x49 && buf[1]===0x49 && buf[2]===0x2A) return 'image/tiff';
+  if (buf.length>=4 && buf[0]===0x4D && buf[1]===0x4D && buf[3]===0x2A) return 'image/tiff';
+  return 'image/jpeg';  // safe fallback for unknown .img files
 }
 
-// Send a file with correct Content-Type.
-// For .img files the extension is useless, so we detect from magic bytes.
+// Convert a buffer to JPEG if it's in a browser-incompatible format (e.g. TIFF).
+async function toWebSafeBuffer(buf) {
+  const mime = detectMimeFromBytes(buf);
+  if (mime === 'image/tiff') {
+    const jpeg = await sharp(buf).jpeg({ quality: 90 }).toBuffer();
+    return { data: jpeg, contentType: 'image/jpeg' };
+  }
+  return { data: buf, contentType: mime };
+}
+
+// Send a file with correct Content-Type, converting TIFF to JPEG for browser compatibility.
 async function sendImageFile(res, filePath) {
   const ext = path.extname(filePath).toLowerCase().slice(1);
-  if (ext !== 'img') return res.sendFile(filePath);
+  if (ext !== 'img' && ext !== 'tif' && ext !== 'tiff') return res.sendFile(filePath);
 
-  const peek = Buffer.alloc(12);
-  const handle = await fs.promises.open(filePath, 'r');
-  try { await handle.read(peek, 0, 12, 0); } finally { await handle.close(); }
-  res.setHeader('Content-Type', detectMimeFromBytes(peek));
-  fs.createReadStream(filePath).pipe(res);
+  const raw = await fs.promises.readFile(filePath);
+  const { data, contentType } = await toWebSafeBuffer(raw);
+  res.setHeader('Content-Type', contentType);
+  res.send(data);
 }
 
 // Serve an image.
@@ -304,9 +315,9 @@ app.get('/api/image', async (req, res) => {
           const tarFile = findTarForBase(base, jsonlBase);
           if (tarFile) {
             const imgData = await extractImageByOffset(tarFile, entry.offset_data, entry.size);
-            // Always detect from magic bytes — handles .img and any mis-labelled extension
-            res.setHeader('Content-Type', detectMimeFromBytes(imgData));
-            return res.send(imgData);
+            const { data, contentType } = await toWebSafeBuffer(imgData);
+            res.setHeader('Content-Type', contentType);
+            return res.send(data);
           }
         }
       } catch { /* fall through */ }
