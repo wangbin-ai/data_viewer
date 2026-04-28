@@ -17,6 +17,16 @@ function safePath(p) {
   return path.normalize(p);
 }
 
+// Return the first existing jsonl-like subdirectory, or null.
+const JSONL_SUBDIRS = ['jsonl', 'clean_jsonl'];
+function findJsonlSubdir(dirPath) {
+  for (const name of JSONL_SUBDIRS) {
+    const full = path.join(dirPath, name);
+    if (fs.existsSync(full) && fs.statSync(full).isDirectory()) return full;
+  }
+  return null;
+}
+
 // Browse a directory
 app.get('/api/browse', (req, res) => {
   const dirPath = safePath(req.query.path);
@@ -39,8 +49,7 @@ app.get('/api/browse', (req, res) => {
         return a.name.localeCompare(b.name);
       });
 
-    const hasJsonlDir = fs.existsSync(path.join(dirPath, 'jsonl')) &&
-      fs.statSync(path.join(dirPath, 'jsonl')).isDirectory();
+    const hasJsonlDir = findJsonlSubdir(dirPath) !== null;
     const hasImagesDir = fs.existsSync(path.join(dirPath, 'images')) &&
       fs.statSync(path.join(dirPath, 'images')).isDirectory();
     const hasJsonlFiles = entries.some(e => !e.isDirectory() && e.name.endsWith('.jsonl'));
@@ -62,9 +71,7 @@ app.get('/api/jsonl-files', (req, res) => {
   if (!dirPath) return res.status(400).json({ error: 'Invalid path' });
 
   try {
-    const subdir = path.join(dirPath, 'jsonl');
-    const jsonlDir = fs.existsSync(subdir) && fs.statSync(subdir).isDirectory()
-      ? subdir : dirPath;
+    const jsonlDir = findJsonlSubdir(dirPath) ?? dirPath;
     const files = fs.readdirSync(jsonlDir)
       .filter(f => f.endsWith('.jsonl')).sort()
       .map(f => ({ name: f, path: path.join(jsonlDir, f) }));
