@@ -50,15 +50,27 @@ app.get('/api/browse', (req, res) => {
       });
 
     const hasJsonlDir = findJsonlSubdir(dirPath) !== null;
-    const hasImagesDir = fs.existsSync(path.join(dirPath, 'images')) &&
-      fs.statSync(path.join(dirPath, 'images')).isDirectory();
     const hasJsonlFiles = entries.some(e => !e.isDirectory() && e.name.endsWith('.jsonl'));
+
+    // Determine the best base path for resolving image refs from JSONL records.
+    // - 'images/' subdir → imagesBase is that subdir (rel paths are bare filenames)
+    // - 'images_*/'-style dirs but no 'images/' → imagesBase is dirPath itself
+    //   (rel paths in JSONL already include the dir name, e.g. "images_0425/foo.jpg")
+    let imagesBase = null;
+    const exactImages = path.join(dirPath, 'images');
+    if (fs.existsSync(exactImages) && fs.statSync(exactImages).isDirectory()) {
+      imagesBase = exactImages;
+    } else {
+      const hasImagesDirs = entries.some(e => e.isDirectory() && /^images/i.test(e.name));
+      if (hasImagesDirs) imagesBase = dirPath;
+    }
 
     res.json({
       path: dirPath,
       items,
       isDataDir: hasJsonlDir || hasJsonlFiles,
-      hasImagesDir,
+      hasImagesDir: imagesBase !== null,
+      imagesBase,
     });
   } catch (e) {
     res.status(400).json({ error: e.message });

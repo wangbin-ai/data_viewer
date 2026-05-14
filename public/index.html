@@ -629,7 +629,7 @@ async function navigate(dirPath) {
     if (data.error) return showError(data.error);
     state.currentPath = data.path;
     state.hasImagesDir = !!data.hasImagesDir;
-    state.imagesDir = data.hasImagesDir ? data.path + '/images' : '';
+    state.imagesDir = data.imagesBase || '';
     state.currentFile = '';
     state.offset = 0;
     updateBreadcrumb(data.path);
