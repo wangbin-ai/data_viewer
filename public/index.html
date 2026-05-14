@@ -361,6 +361,22 @@ body::before {
   font-style: italic;
 }
 
+/* ── Meta tags (conversations format) ── */
+.meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.meta-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: rgba(99,102,241,.12);
+  color: var(--primary2);
+  border: 1px solid var(--border);
+}
+
 /* ── Message ── */
 .message { display: flex; flex-direction: column; gap: 5px; }
 .msg-role {
@@ -802,34 +818,67 @@ function buildCard(lineNum, raw, parsed) {
   let textHtml = '';
 
   if (parsed) {
-    const meta = (parsed.meta_prompt || []).filter(s => s?.trim());
-    if (meta.length) textHtml += `<div class="meta-prompt">📌 ${esc(meta.join(' · '))}</div>`;
+    const metaPrompt = (parsed.meta_prompt || []).filter(s => s?.trim());
+    if (metaPrompt.length) textHtml += `<div class="meta-prompt">📌 ${esc(metaPrompt.join(' · '))}</div>`;
 
-    // Support: {data:[...]}, {messages:[...]}, root array
-    const msgs = Array.isArray(parsed.data) ? parsed.data
-      : Array.isArray(parsed.messages) ? parsed.messages
-      : Array.isArray(parsed) ? parsed : [];
+    // ── Conversations format: {conversations:[{from,value}], images:[...]} ──
+    if (Array.isArray(parsed.conversations)) {
+      const topImages = Array.isArray(parsed.images) ? parsed.images : [];
 
-    msgs.forEach(msg => {
-      const role = msg.role || 'unknown';
-      // content can be an array of typed items OR a plain string
-      const items = Array.isArray(msg.content) ? msg.content
-        : (typeof msg.content === 'string' ? [{ type: 'text', text: { string: msg.content } }] : []);
+      // Show meta badges if present
+      if (parsed.meta) {
+        const m = parsed.meta;
+        const tags = [m.source_dataset, m.task_family, m.modality, m.difficulty_bucket].filter(Boolean);
+        if (tags.length) textHtml += `<div class="meta-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>`;
+      }
 
-      items.forEach(item => {
-        if (item.type === 'image' && state.imagesDir) {
-          const rel = item.image?.relative_path;
-          if (rel) {
-            const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}&jsonlBase=${enc(state.jsonlBase)}`;
-            imagesHtml += `<div class="card-img-wrap">
-              <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
-            </div>`;
-          }
-        }
+      // Collect images for the left panel
+      if (state.imagesDir) {
+        topImages.forEach(rel => {
+          const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}&jsonlBase=${enc(state.jsonlBase)}`;
+          imagesHtml += `<div class="card-img-wrap">
+            <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
+          </div>`;
+        });
+      }
+
+      parsed.conversations.forEach(msg => {
+        const role = msg.from === 'human' ? 'user'
+          : msg.from === 'gpt' ? 'assistant'
+          : (msg.from || 'unknown');
+        // Strip <image> placeholders — images are shown in the left panel
+        const text = (msg.value || '').replace(/<image>\n?/g, '').trim();
+        const items = [{ type: 'text', text }];
+        textHtml += buildMsgHtml(role, items);
       });
 
-      textHtml += buildMsgHtml(role, items);
-    });
+    } else {
+      // ── Standard format: {data:[...]}, {messages:[...]}, or root array ──
+      const msgs = Array.isArray(parsed.data) ? parsed.data
+        : Array.isArray(parsed.messages) ? parsed.messages
+        : Array.isArray(parsed) ? parsed : [];
+
+      msgs.forEach(msg => {
+        const role = msg.role || 'unknown';
+        // content can be an array of typed items OR a plain string
+        const items = Array.isArray(msg.content) ? msg.content
+          : (typeof msg.content === 'string' ? [{ type: 'text', text: { string: msg.content } }] : []);
+
+        items.forEach(item => {
+          if (item.type === 'image' && state.imagesDir) {
+            const rel = item.image?.relative_path;
+            if (rel) {
+              const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}&jsonlBase=${enc(state.jsonlBase)}`;
+              imagesHtml += `<div class="card-img-wrap">
+                <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
+              </div>`;
+            }
+          }
+        });
+
+        textHtml += buildMsgHtml(role, items);
+      });
+    }
   } else {
     textHtml = `<div class="error-msg">⚠ JSON 解析失败</div>`;
   }
