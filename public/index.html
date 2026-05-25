@@ -576,6 +576,43 @@ body::before {
 .back-top:active { transform: scale(.95); }
 .back-top svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 
+/* load-more floating button */
+.load-more-btn {
+  position: fixed;
+  right: 82px;
+  bottom: 36px;
+  z-index: 200;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, var(--cyan), #0ea5e9);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(34,211,238,.35);
+  opacity: 0;
+  transform: translateY(16px) scale(.85);
+  transition: opacity .3s, transform .3s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.load-more-btn.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.load-more-btn:hover {
+  box-shadow: 0 4px 28px rgba(34,211,238,.6);
+  transform: translateY(-2px) scale(1.04);
+}
+.load-more-btn:active { transform: scale(.95); }
+.load-more-btn svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
 /* progress ring */
 .back-top-ring {
   position: absolute;
@@ -600,6 +637,11 @@ body::before {
 </header>
 
 <div id="breadcrumb" class="breadcrumb" style="display:none"></div>
+
+<button class="load-more-btn" id="loadMoreBtn" title="加载更多" onclick="loadMore()">
+  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+  再加载 5 条
+</button>
 
 <button class="back-top" id="backTop" title="回到顶部" onclick="scrollToTop()">
   <div class="back-top-ring" id="backTopRing"></div>
@@ -761,6 +803,7 @@ async function loadMore() {
   finally {
     state.loading = false;
     setSentinel(state.hasMore ? '' : 'done');
+    updateFloatingBtns();
   }
 }
 
@@ -997,22 +1040,25 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeLightbox();
 });
 
-// ── Back to top ──
-const backTopBtn = document.getElementById('backTop');
-const backTopRing = document.getElementById('backTopRing');
+// ── Back to top + Load more ──
+const backTopBtn    = document.getElementById('backTop');
+const backTopRing   = document.getElementById('backTopRing');
+const loadMoreBtn   = document.getElementById('loadMoreBtn');
+
+function updateFloatingBtns() {
+  const scrolled = window.scrollY;
+  const total = document.documentElement.scrollHeight - window.innerHeight;
+  const pct = total > 0 ? Math.round((scrolled / total) * 100) : 0;
+  backTopBtn.classList.toggle('visible', scrolled > 300);
+  backTopRing.style.setProperty('--pct', pct + '%');
+  loadMoreBtn.classList.toggle('visible', !!(state.hasMore && state.currentFile));
+}
 
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-window.addEventListener('scroll', () => {
-  const scrolled = window.scrollY;
-  const total = document.documentElement.scrollHeight - window.innerHeight;
-  const pct = total > 0 ? Math.round((scrolled / total) * 100) : 0;
-
-  backTopBtn.classList.toggle('visible', scrolled > 300);
-  backTopRing.style.setProperty('--pct', pct + '%');
-}, { passive: true });
+window.addEventListener('scroll', updateFloatingBtns, { passive: true });
 
 // Enter key
 document.getElementById('pathInput').addEventListener('keydown', e => {
