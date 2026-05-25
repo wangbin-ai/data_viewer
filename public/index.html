@@ -227,12 +227,6 @@ body::before {
   border-radius: 99px;
   border: 1px solid rgba(99,102,241,.2);
 }
-.meta-status {
-  font-size: 11px;
-  color: var(--cyan);
-  opacity: .75;
-  white-space: nowrap;
-}
 
 /* ── Single-column feed ── */
 .feed { display: flex; flex-direction: column; gap: 16px; }
@@ -381,59 +375,6 @@ body::before {
   background: rgba(99,102,241,.12);
   color: var(--primary2);
   border: 1px solid var(--border);
-}
-
-/* ── Dataset / subset filter bar ── */
-.filter-bar {
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 16px 12px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(0,0,0,.18);
-  margin-bottom: 4px;
-}
-.filter-section { display: flex; flex-direction: column; gap: 6px; }
-.filter-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
-.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.filter-chip {
-  cursor: pointer;
-  font-size: 12px;
-  padding: 3px 11px;
-  border-radius: 99px;
-  background: rgba(255,255,255,.04);
-  border: 1px solid var(--border);
-  color: var(--text2);
-  transition: border-color .15s, color .15s, background .15s;
-  user-select: none;
-  white-space: nowrap;
-}
-.filter-chip em { font-style: normal; color: var(--text3); font-size: 11px; margin-left: 3px; }
-.filter-chip:hover { border-color: var(--primary); color: var(--primary2); }
-.filter-chip.active {
-  background: rgba(99,102,241,.18);
-  border-color: var(--primary);
-  color: var(--primary2);
-  font-weight: 500;
-}
-.filter-apply-btn {
-  padding: 3px 14px;
-  border-radius: 99px;
-  border: none;
-  background: linear-gradient(135deg, var(--primary), #4f46e5);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: opacity .15s;
-  box-shadow: 0 1px 8px rgba(99,102,241,.3);
-}
-.filter-apply-btn:hover { opacity: .85; }
-.filter-apply-btn.muted {
-  background: rgba(255,255,255,.07);
-  color: var(--text3);
-  box-shadow: none;
-  cursor: default;
 }
 
 /* ── Message ── */
@@ -689,10 +630,6 @@ const state = {
   limit: 5,
   loading: false,
   hasMore: false,
-  metaDatasets: {},
-  filterDataset: '',   // applied filter (what feed shows)
-  pendingDataset: '',  // visually selected chip (not yet applied)
-  firstFilterLoad: false,
 };
 
 const mainEl = document.getElementById('main');
@@ -755,7 +692,6 @@ function renderBrowser(data) {
     html += '<div class="status">此目录为空或不含可浏览内容</div>';
 
   if (data.isDataDir) {
-    html += '<div id="filterBar" class="filter-bar" style="display:none"></div>';
     html += '<div id="feed" class="feed"></div>';
     html += '<div id="sentinel" class="sentinel"></div>';
   }
@@ -772,7 +708,6 @@ function buildFileSelector() {
       <option value="">-- 加载中 --</option>
     </select>
     <span class="record-count" id="recordCount">-</span>
-    <span class="meta-status" id="metaStatus"></span>
   </div>`;
 }
 
@@ -787,8 +722,6 @@ async function loadJsonlFiles(dirPath) {
     sel.innerHTML = data.files.map(f =>
       `<option value="${esc(f.path)}">${esc(f.name)}</option>`
     ).join('');
-    // Pre-warm meta-stats cache for all files in background so switching is instant
-    data.files.forEach(f => fetch('/api/meta-stats?file=' + enc(f.path)).catch(() => {}));
     openFile(data.files[0].path);
   } catch (e) { showError(e.message); }
 }
@@ -797,87 +730,14 @@ function onFileChange(fp) { if (fp) openFile(fp); }
 
 function openFile(fp) {
   state.currentFile = fp;
+  // Extract stem (e.g. "0000001" from "/path/to/0000001.jsonl") for tarinfo lookup
   state.jsonlBase = (fp.split('/').pop() || '').replace(/\.jsonl$/i, '');
-  // Reset filter state immediately so stale async responses are discarded
-  state.filterDataset  = '';
-  state.pendingDataset = '';
-  state.metaDatasets   = {};
   state.offset = 0;
   state.hasMore = false;
   const sel = document.getElementById('fileSelect');
   if (sel && fp) sel.value = fp;
   const feed = document.getElementById('feed');
   if (feed) feed.innerHTML = '';
-  renderFilterBar();
-  setupObserver();
-  loadMore();
-  loadMetaStats(fp);
-}
-
-// ── Meta-stats filter bar ──
-function setMetaStatus(text) {
-  const el = document.getElementById('metaStatus');
-  if (el) el.textContent = text;
-}
-
-async function loadMetaStats(fp) {
-  setMetaStatus('索引中…');
-  try {
-    const data = await (await fetch('/api/meta-stats?file=' + enc(fp))).json();
-    if (state.currentFile !== fp) return; // stale — file switched
-    if (data.error) { setMetaStatus(''); return; }
-
-    if (data.ready) {
-      setMetaStatus('');
-      if (data.datasets && Object.keys(data.datasets).length) {
-        state.metaDatasets = data.datasets;
-        renderFilterBar();
-      }
-    } else {
-      // Index not ready yet — poll every 2 s
-      setTimeout(() => { if (state.currentFile === fp) loadMetaStats(fp); }, 2000);
-    }
-  } catch { setMetaStatus(''); }
-}
-
-function renderFilterBar() {
-  const bar = document.getElementById('filterBar');
-  if (!bar) return;
-  const datasets = state.metaDatasets;
-  const dsKeys = Object.keys(datasets);
-  if (!dsKeys.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
-  bar.style.display = 'flex';
-
-  let html = '<div class="filter-section"><span class="filter-label">数据集</span><div class="filter-chips">';
-  html += `<span class="filter-chip${!state.pendingDataset ? ' active' : ''}" onclick="selectDataset('')">全部</span>`;
-  dsKeys.forEach(ds => {
-    html += `<span class="filter-chip${state.pendingDataset === ds ? ' active' : ''}"
-      data-ds="${esc(ds)}" onclick="selectDataset(this.dataset.ds)">${esc(ds)} <em>${datasets[ds]}</em></span>`;
-  });
-  const canApply = state.pendingDataset !== state.filterDataset;
-  html += `<button class="filter-apply-btn${canApply ? '' : ' muted'}" onclick="applyFilter()">筛选</button>`;
-  html += '</div></div>';
-  bar.innerHTML = html;
-}
-
-function selectDataset(ds) {
-  if (state.pendingDataset === ds) return;
-  state.pendingDataset = ds;
-  renderFilterBar(); // update chip highlight only, don't reload feed
-}
-
-function applyFilter() {
-  state.filterDataset = state.pendingDataset;
-  reloadFeed();
-}
-
-function reloadFeed() {
-  state.offset = 0;
-  state.hasMore = false;
-  state.firstFilterLoad = true;
-  const feed = document.getElementById('feed');
-  if (feed) feed.innerHTML = '';
-  renderFilterBar();
   setupObserver();
   loadMore();
 }
@@ -889,10 +749,7 @@ async function loadMore() {
   state.loading = true;
   setSentinel('spinner');
   try {
-    const batchLimit = (state.firstFilterLoad && state.filterDataset) ? 3 : state.limit;
-    state.firstFilterLoad = false;
-    let url = `/api/records?file=${enc(state.currentFile)}&offset=${state.offset}&limit=${batchLimit}`;
-    if (state.filterDataset) url += `&filter_dataset=${enc(state.filterDataset)}`;
+    const url = `/api/records?file=${enc(state.currentFile)}&offset=${state.offset}&limit=${state.limit}`;
     const data = await (await fetch(url)).json();
     if (data.error) { showError(data.error); return; }
     appendCards(data.records);
