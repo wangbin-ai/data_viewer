@@ -100,10 +100,13 @@ app.get('/api/records', async (req, res) => {
 
   const offset = Math.max(0, parseInt(req.query.offset) || 0);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+  const filterDataset = req.query.filter_dataset || '';
+  const filterSubset  = req.query.filter_subset  || '';
+  const doFilter = !!(filterDataset || filterSubset);
 
   try {
     const records = [];
-    let lineNum = 0;
+    let matchCount = 0;
     let hasMore = false;
 
     const rl = readline.createInterface({
@@ -115,20 +118,60 @@ app.get('/api/records', async (req, res) => {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      if (lineNum >= offset && lineNum < offset + limit) {
-        records.push({ lineNum, raw: trimmed });
-      } else if (lineNum >= offset + limit) {
+      if (doFilter) {
+        // Fast regex instead of full JSON.parse — only need two fields
+        const ds = trimmed.match(/"source_dataset"\s*:\s*"([^"\\]+)"/)?.[1] || '';
+        const ss = trimmed.match(/"source_subset"\s*:\s*"([^"\\]+)"/)?.[1]  || '';
+        if (filterDataset && ds !== filterDataset) continue;
+        if (filterSubset  && ss !== filterSubset)  continue;
+      }
+
+      if (matchCount >= offset && matchCount < offset + limit) {
+        records.push({ lineNum: matchCount, raw: trimmed });
+      } else if (matchCount >= offset + limit) {
         hasMore = true;
         rl.close();
         break;
       }
-      lineNum++;
+      matchCount++;
     }
 
-    res.json({ records, offset, hasMore, total: lineNum + (hasMore ? 1 : 0) });
+    res.json({ records, offset, hasMore, total: matchCount + (hasMore ? 1 : 0) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// metaStatsCache: filePath → { mtime, datasets }
+// Fast regex scan (no JSON.parse), cached by file mtime so repeat calls are instant.
+const metaStatsCache = new Map();
+
+app.get('/api/meta-stats', async (req, res) => {
+  const filePath = safePath(req.query.file);
+  if (!filePath) return res.status(400).json({ error: 'Invalid path' });
+  try {
+    const mtime = fs.statSync(filePath).mtimeMs;
+    const cached = metaStatsCache.get(filePath);
+    if (cached && cached.mtime === mtime) return res.json({ datasets: cached.datasets });
+
+    const datasets = {};
+    const rl = readline.createInterface({
+      input: fs.createReadStream(filePath),
+      crlfDelay: Infinity,
+    });
+    for await (const line of rl) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const ds = trimmed.match(/"source_dataset"\s*:\s*"([^"\\]+)"/)?.[1];
+      const ss = trimmed.match(/"source_subset"\s*:\s*"([^"\\]+)"/)?.[1] || '';
+      if (ds) {
+        if (!datasets[ds]) datasets[ds] = {};
+        datasets[ds][ss] = (datasets[ds][ss] || 0) + 1;
+      }
+    }
+    mapSet(metaStatsCache, filePath, { mtime, datasets }, 20);
+    res.json({ datasets });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ── Tar image cache ──
