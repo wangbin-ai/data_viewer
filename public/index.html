@@ -665,7 +665,6 @@ const state = {
   hasMore: false,
   metaDatasets: {},
   filterDataset: '',
-  filterSubset: '',
 };
 
 const mainEl = document.getElementById('main');
@@ -770,7 +769,6 @@ function openFile(fp) {
   state.jsonlBase = (fp.split('/').pop() || '').replace(/\.jsonl$/i, '');
   // Reset filter state immediately so stale async responses are discarded
   state.filterDataset = '';
-  state.filterSubset  = '';
   state.metaDatasets  = {};
   state.offset = 0;
   state.hasMore = false;
@@ -807,38 +805,16 @@ function renderFilterBar() {
   let html = '<div class="filter-section"><span class="filter-label">数据集</span><div class="filter-chips">';
   html += `<span class="filter-chip${!state.filterDataset ? ' active' : ''}" onclick="selectDataset('')">全部</span>`;
   dsKeys.forEach(ds => {
-    const total = Object.values(datasets[ds]).reduce((a, b) => a + b, 0);
     html += `<span class="filter-chip${state.filterDataset === ds ? ' active' : ''}"
-      data-ds="${esc(ds)}" onclick="selectDataset(this.dataset.ds)">${esc(ds)} <em>${total}</em></span>`;
+      data-ds="${esc(ds)}" onclick="selectDataset(this.dataset.ds)">${esc(ds)} <em>${datasets[ds]}</em></span>`;
   });
   html += '</div></div>';
-
-  if (state.filterDataset && datasets[state.filterDataset]) {
-    const ssMap = datasets[state.filterDataset];
-    const ssKeys = Object.keys(ssMap).filter(k => k).sort();
-    if (ssKeys.length > 1) {
-      html += '<div class="filter-section"><span class="filter-label">子集</span><div class="filter-chips">';
-      html += `<span class="filter-chip${!state.filterSubset ? ' active' : ''}" onclick="selectSubset('')">全部</span>`;
-      ssKeys.forEach(ss => {
-        html += `<span class="filter-chip${state.filterSubset === ss ? ' active' : ''}"
-          data-ss="${esc(ss)}" onclick="selectSubset(this.dataset.ss)">${esc(ss)} <em>${ssMap[ss]}</em></span>`;
-      });
-      html += '</div></div>';
-    }
-  }
   bar.innerHTML = html;
 }
 
 function selectDataset(ds) {
   if (state.filterDataset === ds) return;
   state.filterDataset = ds;
-  state.filterSubset  = '';
-  reloadFeed();
-}
-
-function selectSubset(ss) {
-  if (state.filterSubset === ss) return;
-  state.filterSubset = ss;
   reloadFeed();
 }
 
@@ -861,7 +837,6 @@ async function loadMore() {
   try {
     let url = `/api/records?file=${enc(state.currentFile)}&offset=${state.offset}&limit=${state.limit}`;
     if (state.filterDataset) url += `&filter_dataset=${enc(state.filterDataset)}`;
-    if (state.filterSubset)  url += `&filter_subset=${enc(state.filterSubset)}`;
     const data = await (await fetch(url)).json();
     if (data.error) { showError(data.error); return; }
     appendCards(data.records);
