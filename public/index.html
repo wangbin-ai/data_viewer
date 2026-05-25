@@ -544,11 +544,28 @@ body::before {
 ::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,.45); }
 
 /* ── Back to top ── */
-.back-top {
+/* ── Floating button column (top→bottom: 回顶部 / 上一条 / 下一条) ── */
+.float-col {
   position: fixed;
   right: 28px;
   bottom: 36px;
   z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  opacity: 0;
+  transform: translateX(16px);
+  transition: opacity .3s, transform .3s;
+  pointer-events: none;
+}
+.float-col.visible {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+.float-btn {
+  position: relative;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -559,67 +576,20 @@ body::before {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 20px rgba(99,102,241,.45);
-  opacity: 0;
-  transform: translateY(16px) scale(.85);
-  transition: opacity .3s, transform .3s;
-  pointer-events: none;
+  transition: box-shadow .2s, transform .15s, opacity .2s;
+  flex-shrink: 0;
 }
-.back-top.visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
-.back-top:hover {
-  box-shadow: 0 4px 28px rgba(99,102,241,.7);
-  transform: translateY(-2px) scale(1.07);
-}
-.back-top:active { transform: scale(.95); }
-.back-top svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.float-btn:hover { box-shadow: 0 4px 28px rgba(99,102,241,.7); transform: scale(1.1); }
+.float-btn:active { transform: scale(.95); }
+.float-btn svg { width: 18px; height: 18px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.float-btn.dim { opacity: .28; cursor: default; pointer-events: none; }
 
-/* load-more floating button */
-.load-more-btn {
-  position: fixed;
-  right: 82px;
-  bottom: 36px;
-  z-index: 200;
-  height: 44px;
-  padding: 0 18px;
-  border-radius: 22px;
-  background: linear-gradient(135deg, var(--cyan), #0ea5e9);
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  box-shadow: 0 4px 20px rgba(34,211,238,.35);
-  opacity: 0;
-  transform: translateY(16px) scale(.85);
-  transition: opacity .3s, transform .3s;
-  pointer-events: none;
-  white-space: nowrap;
-}
-.load-more-btn.visible {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
-.load-more-btn:hover {
-  box-shadow: 0 4px 28px rgba(34,211,238,.6);
-  transform: translateY(-2px) scale(1.04);
-}
-.load-more-btn:active { transform: scale(.95); }
-.load-more-btn svg { width: 15px; height: 15px; fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-
-/* progress ring */
+/* progress ring on back-to-top */
 .back-top-ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
   background: conic-gradient(rgba(255,255,255,.35) var(--pct, 0%), transparent var(--pct, 0%));
-  border-radius: 50%;
 }
 </style>
 </head>
@@ -638,15 +608,21 @@ body::before {
 
 <div id="breadcrumb" class="breadcrumb" style="display:none"></div>
 
-<button class="load-more-btn" id="loadMoreBtn" title="加载更多" onclick="loadMore()">
-  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-  再加载 5 条
-</button>
-
-<button class="back-top" id="backTop" title="回到顶部" onclick="scrollToTop()">
-  <div class="back-top-ring" id="backTopRing"></div>
-  <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
-</button>
+<div class="float-col" id="floatCol">
+  <!-- 回到顶部 -->
+  <button class="float-btn" id="backTop" title="回到顶部" onclick="scrollToTop()">
+    <div class="back-top-ring" id="backTopRing"></div>
+    <svg viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>
+  </button>
+  <!-- 上一条 -->
+  <button class="float-btn" id="prevBtn" title="上一条" onclick="prevRecord()">
+    <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <!-- 下一条 -->
+  <button class="float-btn" id="nextBtn" title="下一条" onclick="nextRecord()">
+    <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+</div>
 
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <span class="lightbox-close" onclick="closeLightbox()">✕</span>
@@ -1040,22 +1016,64 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeLightbox();
 });
 
-// ── Back to top + Load more ──
-const backTopBtn    = document.getElementById('backTop');
-const backTopRing   = document.getElementById('backTopRing');
-const loadMoreBtn   = document.getElementById('loadMoreBtn');
+// ── Floating nav buttons ──
+const floatCol   = document.getElementById('floatCol');
+const backTopRing = document.getElementById('backTopRing');
+const prevBtn    = document.getElementById('prevBtn');
+const nextBtn    = document.getElementById('nextBtn');
+
+// Returns the index of the card whose top is closest to (but at or above) viewport centre.
+function currentCardIndex() {
+  const cards = [...document.querySelectorAll('.record-card')];
+  if (!cards.length) return { index: -1, cards };
+  const mid = window.scrollY + window.innerHeight / 2;
+  let best = 0;
+  for (let i = 0; i < cards.length; i++) {
+    if (cards[i].getBoundingClientRect().top + window.scrollY <= mid) best = i;
+    else break;
+  }
+  return { index: best, cards };
+}
+
+function scrollToCard(card) {
+  const top = card.getBoundingClientRect().top + window.scrollY;
+  window.scrollTo({ top: Math.max(0, top - 80), behavior: 'smooth' });
+}
+
+function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+function prevRecord() {
+  const { index, cards } = currentCardIndex();
+  if (index > 0) scrollToCard(cards[index - 1]);
+  else window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function nextRecord() {
+  const { index, cards } = currentCardIndex();
+  if (index < cards.length - 1) {
+    scrollToCard(cards[index + 1]);
+  } else if (state.hasMore) {
+    const before = cards.length;
+    await loadMore();
+    const after = [...document.querySelectorAll('.record-card')];
+    if (after.length > before) scrollToCard(after[before]);
+  }
+}
 
 function updateFloatingBtns() {
   const scrolled = window.scrollY;
   const total = document.documentElement.scrollHeight - window.innerHeight;
   const pct = total > 0 ? Math.round((scrolled / total) * 100) : 0;
-  backTopBtn.classList.toggle('visible', scrolled > 300);
   backTopRing.style.setProperty('--pct', pct + '%');
-  loadMoreBtn.classList.toggle('visible', !!(state.hasMore && state.currentFile));
-}
 
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const cards = document.querySelectorAll('.record-card');
+  floatCol.classList.toggle('visible', cards.length > 0);
+
+  if (cards.length > 0) {
+    const { index } = currentCardIndex();
+    prevBtn.classList.toggle('dim', index <= 0);
+    nextBtn.classList.toggle('dim', index >= cards.length - 1 && !state.hasMore);
+  }
 }
 
 window.addEventListener('scroll', updateFloatingBtns, { passive: true });
