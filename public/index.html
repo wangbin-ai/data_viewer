@@ -671,6 +671,7 @@ const state = {
   hasMore: false,
   metaDatasets: {},
   filterDataset: '',
+  firstFilterLoad: false,
 };
 
 const mainEl = document.getElementById('main');
@@ -801,12 +802,19 @@ async function loadMetaStats(fp) {
   setMetaStatus('索引中…');
   try {
     const data = await (await fetch('/api/meta-stats?file=' + enc(fp))).json();
-    // Discard result if the user has already switched to a different file
-    if (state.currentFile !== fp) return;
-    setMetaStatus('');
-    if (data.error || !data.datasets || !Object.keys(data.datasets).length) return;
-    state.metaDatasets = data.datasets;
-    renderFilterBar();
+    if (state.currentFile !== fp) return; // stale — file switched
+    if (data.error) { setMetaStatus(''); return; }
+
+    if (data.ready) {
+      setMetaStatus('');
+      if (data.datasets && Object.keys(data.datasets).length) {
+        state.metaDatasets = data.datasets;
+        renderFilterBar();
+      }
+    } else {
+      // Index not ready yet — poll every 2 s
+      setTimeout(() => { if (state.currentFile === fp) loadMetaStats(fp); }, 2000);
+    }
   } catch { setMetaStatus(''); }
 }
 
@@ -837,6 +845,7 @@ function selectDataset(ds) {
 function reloadFeed() {
   state.offset = 0;
   state.hasMore = false;
+  state.firstFilterLoad = true;
   const feed = document.getElementById('feed');
   if (feed) feed.innerHTML = '';
   renderFilterBar();
@@ -851,7 +860,9 @@ async function loadMore() {
   state.loading = true;
   setSentinel('spinner');
   try {
-    let url = `/api/records?file=${enc(state.currentFile)}&offset=${state.offset}&limit=${state.limit}`;
+    const batchLimit = (state.firstFilterLoad && state.filterDataset) ? 3 : state.limit;
+    state.firstFilterLoad = false;
+    let url = `/api/records?file=${enc(state.currentFile)}&offset=${state.offset}&limit=${batchLimit}`;
     if (state.filterDataset) url += `&filter_dataset=${enc(state.filterDataset)}`;
     const data = await (await fetch(url)).json();
     if (data.error) { showError(data.error); return; }

@@ -93,83 +93,135 @@ app.get('/api/jsonl-files', (req, res) => {
   }
 });
 
+// ── Persistent meta index ──
+// Built once per file (invalidated by mtime), saved to disk so any user/restart is instant.
+const CACHE_DIR = path.join(os.tmpdir(), 'data_viewer_cache');
+const INDEX_DIR  = path.join(CACHE_DIR, 'meta_index');
+fs.mkdirSync(INDEX_DIR, { recursive: true });
+
+function indexFilePath(filePath) {
+  const key = Buffer.from(filePath).toString('base64').replace(/[/+=]/g, '_');
+  return path.join(INDEX_DIR, key + '.json');
+}
+
+async function readIndex(filePath) {
+  try {
+    const raw  = await fs.promises.readFile(indexFilePath(filePath), 'utf8');
+    const idx  = JSON.parse(raw);
+    const stat = fs.statSync(filePath);
+    if (idx.mtime === stat.mtimeMs) return idx;
+  } catch {}
+  return null;
+}
+
+// Track files currently being scanned (path → true) so we don't double-scan
+const scanInProgress = new Set();
+
+function startIndexBuild(filePath) {
+  if (scanInProgress.has(filePath)) return;
+  scanInProgress.add(filePath);
+  (async () => {
+    try {
+      const mtime = fs.statSync(filePath).mtimeMs;
+      const datasets = {};
+      const linesByDataset = {};
+      let lineNum = 0;
+      const rl = readline.createInterface({
+        input: fs.createReadStream(filePath),
+        crlfDelay: Infinity,
+      });
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const ds = trimmed.match(/"source_dataset"\s*:\s*"([^"\\]+)"/)?.[1];
+        if (ds) {
+          datasets[ds] = (datasets[ds] || 0) + 1;
+          if (!linesByDataset[ds]) linesByDataset[ds] = [];
+          linesByDataset[ds].push(lineNum);
+        }
+        lineNum++;
+      }
+      await fs.promises.writeFile(indexFilePath(filePath), JSON.stringify({ mtime, datasets, linesByDataset }));
+    } catch { /* ignore */ }
+    finally { scanInProgress.delete(filePath); }
+  })();
+}
+
 // Read records from a jsonl file with offset/limit pagination
 app.get('/api/records', async (req, res) => {
   const filePath = safePath(req.query.file);
   if (!filePath) return res.status(400).json({ error: 'Invalid path' });
 
-  const offset = Math.max(0, parseInt(req.query.offset) || 0);
-  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+  const offset        = Math.max(0, parseInt(req.query.offset) || 0);
+  const limit         = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
   const filterDataset = req.query.filter_dataset || '';
-  const doFilter = !!filterDataset;
 
   try {
+    // ── Fast path: use persistent index for filtered queries ──
+    if (filterDataset) {
+      const idx = await readIndex(filePath);
+      if (idx?.linesByDataset?.[filterDataset]) {
+        const allLines  = idx.linesByDataset[filterDataset];
+        const pageLines = allLines.slice(offset, offset + limit);
+        const hasMore   = offset + limit < allLines.length;
+
+        if (!pageLines.length) return res.json({ records: [], offset, hasMore: false, total: allLines.length });
+
+        const lineToSlot = new Map(pageLines.map((ln, i) => [ln, i]));
+        const records    = new Array(pageLines.length).fill(null);
+        const maxLine    = pageLines[pageLines.length - 1]; // pageLines is sorted (built in scan order)
+        let lineNum = 0;
+
+        const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
+        for await (const line of rl) {
+          const trimmed = line.trim();
+          if (trimmed && lineToSlot.has(lineNum)) {
+            const slot = lineToSlot.get(lineNum);
+            records[slot] = { lineNum: offset + slot, raw: trimmed };
+            if (lineNum >= maxLine) { rl.close(); break; }
+          }
+          lineNum++;
+        }
+        return res.json({ records: records.filter(Boolean), offset, hasMore, total: allLines.length });
+      }
+    }
+
+    // ── Slow path: sequential scan (no index or no filter) ──
     const records = [];
     let matchCount = 0;
     let hasMore = false;
-
-    const rl = readline.createInterface({
-      input: fs.createReadStream(filePath),
-      crlfDelay: Infinity,
-    });
-
+    const rl = readline.createInterface({ input: fs.createReadStream(filePath), crlfDelay: Infinity });
     for await (const line of rl) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-
-      if (doFilter) {
-        // Fast regex instead of full JSON.parse — only need two fields
+      if (filterDataset) {
         const ds = trimmed.match(/"source_dataset"\s*:\s*"([^"\\]+)"/)?.[1] || '';
         if (ds !== filterDataset) continue;
       }
-
       if (matchCount >= offset && matchCount < offset + limit) {
         records.push({ lineNum: matchCount, raw: trimmed });
       } else if (matchCount >= offset + limit) {
-        hasMore = true;
-        rl.close();
-        break;
+        hasMore = true; rl.close(); break;
       }
       matchCount++;
     }
-
     res.json({ records, offset, hasMore, total: matchCount + (hasMore ? 1 : 0) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-// metaStatsCache: filePath → { mtime, datasets }
-// Fast regex scan (no JSON.parse), cached by file mtime so repeat calls are instant.
-const metaStatsCache = new Map();
-
+// Return index status; start background build if not ready.
 app.get('/api/meta-stats', async (req, res) => {
   const filePath = safePath(req.query.file);
   if (!filePath) return res.status(400).json({ error: 'Invalid path' });
   try {
-    const mtime = fs.statSync(filePath).mtimeMs;
-    const cached = metaStatsCache.get(filePath);
-    if (cached && cached.mtime === mtime) return res.json({ datasets: cached.datasets });
-
-    const datasets = {};
-    const rl = readline.createInterface({
-      input: fs.createReadStream(filePath),
-      crlfDelay: Infinity,
-    });
-    for await (const line of rl) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      const ds = trimmed.match(/"source_dataset"\s*:\s*"([^"\\]+)"/)?.[1];
-      if (ds) datasets[ds] = (datasets[ds] || 0) + 1;
-    }
-    mapSet(metaStatsCache, filePath, { mtime, datasets }, 20);
-    res.json({ datasets });
+    const idx = await readIndex(filePath);
+    if (idx) return res.json({ datasets: idx.datasets, ready: true });
+    startIndexBuild(filePath);
+    res.json({ datasets: {}, ready: false });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
-
-// ── Tar image cache ──
-const CACHE_DIR = path.join(os.tmpdir(), 'data_viewer_cache');
-fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 // Evict the oldest entry when a Map exceeds maxSize (FIFO)
 function mapSet(map, key, value, maxSize = 30) {
