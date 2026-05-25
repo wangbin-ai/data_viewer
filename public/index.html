@@ -227,6 +227,12 @@ body::before {
   border-radius: 99px;
   border: 1px solid rgba(99,102,241,.2);
 }
+.meta-status {
+  font-size: 11px;
+  color: var(--cyan);
+  opacity: .75;
+  white-space: nowrap;
+}
 
 /* ── Single-column feed ── */
 .feed { display: flex; flex-direction: column; gap: 16px; }
@@ -744,6 +750,7 @@ function buildFileSelector() {
       <option value="">-- 加载中 --</option>
     </select>
     <span class="record-count" id="recordCount">-</span>
+    <span class="meta-status" id="metaStatus"></span>
   </div>`;
 }
 
@@ -758,6 +765,8 @@ async function loadJsonlFiles(dirPath) {
     sel.innerHTML = data.files.map(f =>
       `<option value="${esc(f.path)}">${esc(f.name)}</option>`
     ).join('');
+    // Pre-warm meta-stats cache for all files in background so switching is instant
+    data.files.forEach(f => fetch('/api/meta-stats?file=' + enc(f.path)).catch(() => {}));
     openFile(data.files[0].path);
   } catch (e) { showError(e.message); }
 }
@@ -783,15 +792,22 @@ function openFile(fp) {
 }
 
 // ── Meta-stats filter bar ──
+function setMetaStatus(text) {
+  const el = document.getElementById('metaStatus');
+  if (el) el.textContent = text;
+}
+
 async function loadMetaStats(fp) {
+  setMetaStatus('索引中…');
   try {
     const data = await (await fetch('/api/meta-stats?file=' + enc(fp))).json();
     // Discard result if the user has already switched to a different file
     if (state.currentFile !== fp) return;
+    setMetaStatus('');
     if (data.error || !data.datasets || !Object.keys(data.datasets).length) return;
     state.metaDatasets = data.datasets;
     renderFilterBar();
-  } catch {}
+  } catch { setMetaStatus(''); }
 }
 
 function renderFilterBar() {
