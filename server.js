@@ -27,6 +27,23 @@ function findJsonlSubdir(dirPath) {
   return null;
 }
 
+// Walk up ancestor directories from dirPath looking for a sibling 'images*' folder
+// (e.g. root/data + root/images). Returns the ancestor dir (not the images folder
+// itself), since rel paths in this case already include "images/..." from there.
+const IMAGES_UP_MAX_DEPTH = 5;
+function findImagesBaseUp(dirPath) {
+  let dir = dirPath;
+  for (let i = 0; i < IMAGES_UP_MAX_DEPTH; i++) {
+    const parent = path.dirname(dir);
+    if (parent === dir) return null; // reached filesystem root
+    dir = parent;
+    let siblingEntries;
+    try { siblingEntries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return null; }
+    if (siblingEntries.some(e => e.isDirectory() && /^images/i.test(e.name))) return dir;
+  }
+  return null;
+}
+
 // Browse a directory
 app.get('/api/browse', (req, res) => {
   const dirPath = safePath(req.query.path);
@@ -56,13 +73,17 @@ app.get('/api/browse', (req, res) => {
     // - 'images/' subdir → imagesBase is that subdir (rel paths are bare filenames)
     // - 'images_*/'-style dirs but no 'images/' → imagesBase is dirPath itself
     //   (rel paths in JSONL already include the dir name, e.g. "images_0425/foo.jpg")
+    // - no images-related dir here at all → walk up ancestor dirs looking for a
+    //   sibling 'images*' folder (e.g. data/ and images/ are siblings under root/;
+    //   rel paths already include "images/..." relative to that ancestor)
     let imagesBase = null;
     const exactImages = path.join(dirPath, 'images');
     if (fs.existsSync(exactImages) && fs.statSync(exactImages).isDirectory()) {
       imagesBase = exactImages;
+    } else if (entries.some(e => e.isDirectory() && /^images/i.test(e.name))) {
+      imagesBase = dirPath;
     } else {
-      const hasImagesDirs = entries.some(e => e.isDirectory() && /^images/i.test(e.name));
-      if (hasImagesDirs) imagesBase = dirPath;
+      imagesBase = findImagesBaseUp(dirPath);
     }
 
     res.json({
