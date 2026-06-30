@@ -27,6 +27,17 @@ function findJsonlSubdir(dirPath) {
   return null;
 }
 
+// Dirent.isDirectory() does NOT follow symlinks (it reflects the dirent's own
+// type), so a symlinked directory entry reports false. Resolve via statSync
+// (which does follow symlinks) when the entry is a symlink.
+function isDirLike(parentDir, dirent) {
+  if (dirent.isDirectory()) return true;
+  if (dirent.isSymbolicLink()) {
+    try { return fs.statSync(path.join(parentDir, dirent.name)).isDirectory(); } catch { return false; }
+  }
+  return false;
+}
+
 // Walk up ancestor directories from dirPath looking for a sibling 'images*' folder
 // (e.g. root/data + root/images). Returns the ancestor dir (not the images folder
 // itself), since rel paths in this case already include "images/..." from there.
@@ -39,7 +50,7 @@ function findImagesBaseUp(dirPath) {
     dir = parent;
     let siblingEntries;
     try { siblingEntries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return null; }
-    if (siblingEntries.some(e => e.isDirectory() && /^images/i.test(e.name))) return dir;
+    if (siblingEntries.some(e => isDirLike(dir, e) && /^images/i.test(e.name))) return dir;
   }
   return null;
 }
@@ -55,10 +66,10 @@ app.get('/api/browse', (req, res) => {
 
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     const items = entries
-      .filter(e => e.isDirectory() || e.name.endsWith('.jsonl'))
+      .filter(e => isDirLike(dirPath, e) || e.name.endsWith('.jsonl'))
       .map(e => ({
         name: e.name,
-        isDir: e.isDirectory(),
+        isDir: isDirLike(dirPath, e),
         path: path.join(dirPath, e.name),
       }))
       .sort((a, b) => {
@@ -67,7 +78,7 @@ app.get('/api/browse', (req, res) => {
       });
 
     const hasJsonlDir = findJsonlSubdir(dirPath) !== null;
-    const hasJsonlFiles = entries.some(e => !e.isDirectory() && e.name.endsWith('.jsonl'));
+    const hasJsonlFiles = entries.some(e => !isDirLike(dirPath, e) && e.name.endsWith('.jsonl'));
 
     // Determine the best base path for resolving image refs from JSONL records.
     // - 'images/' subdir → imagesBase is that subdir (rel paths are bare filenames)
@@ -80,7 +91,7 @@ app.get('/api/browse', (req, res) => {
     const exactImages = path.join(dirPath, 'images');
     if (fs.existsSync(exactImages) && fs.statSync(exactImages).isDirectory()) {
       imagesBase = exactImages;
-    } else if (entries.some(e => e.isDirectory() && /^images/i.test(e.name))) {
+    } else if (entries.some(e => isDirLike(dirPath, e) && /^images/i.test(e.name))) {
       imagesBase = dirPath;
     } else {
       imagesBase = findImagesBaseUp(dirPath);
