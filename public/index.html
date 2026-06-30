@@ -839,17 +839,11 @@ function buildCard(lineNum, raw, parsed) {
   if (parsed) {
     const metaPrompt = (parsed.meta_prompt || []).filter(s => s?.trim());
     if (metaPrompt.length) textHtml += `<div class="meta-prompt">📌 ${esc(metaPrompt.join(' · '))}</div>`;
+    textHtml += buildMetaTagsHtml(parsed);
 
     // ── Conversations format: {conversations:[{from,value}], images:[...]} ──
     if (Array.isArray(parsed.conversations)) {
       const topImages = Array.isArray(parsed.images) ? parsed.images : [];
-
-      // Show meta badges if present
-      if (parsed.meta) {
-        const m = parsed.meta;
-        const tags = [m.source_dataset, m.task_family, m.modality, m.difficulty_bucket].filter(Boolean);
-        if (tags.length) textHtml += `<div class="meta-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>`;
-      }
 
       // Collect images for the left panel
       if (state.imagesDir) {
@@ -884,14 +878,14 @@ function buildCard(lineNum, raw, parsed) {
           : (typeof msg.content === 'string' ? [{ type: 'text', text: { string: msg.content } }] : []);
 
         items.forEach(item => {
-          if (item.type === 'image' && state.imagesDir) {
-            const rel = item.image?.relative_path;
-            if (rel) {
-              const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}&jsonlBase=${enc(state.jsonlBase)}`;
-              imagesHtml += `<div class="card-img-wrap">
-                <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
-              </div>`;
-            }
+          const rel = item.type === 'image' ? item.image?.relative_path
+            : item.type === 'image_url' ? item.image_url?.url
+            : null;
+          if (rel && state.imagesDir) {
+            const src = `/api/image?base=${enc(state.imagesDir)}&rel=${enc(rel)}&jsonlBase=${enc(state.jsonlBase)}`;
+            imagesHtml += `<div class="card-img-wrap">
+              <img src="${src}" loading="lazy" decoding="async" alt="${esc(rel)}" title="${esc(rel)}" onclick="openLightbox(this)">
+            </div>`;
           }
         });
 
@@ -928,12 +922,22 @@ function buildMsgHtml(role, items) {
       body += role === 'assistant' ? renderAssistant(s) : `<span class="msg-text">${esc(s)}</span>`;
     } else if (item.type === 'image') {
       body += `<span class="inline-img-ref">🖼 ${esc(item.image?.relative_path || '')}</span> `;
+    } else if (item.type === 'image_url') {
+      body += `<span class="inline-img-ref">🖼 ${esc(item.image_url?.url || '')}</span> `;
     }
   });
   return `<div class="message">
     <div class="msg-role ${role}">${esc(label)}</div>
     <div class="msg-body ${role}">${body}</div>
   </div>`;
+}
+
+// Render top-level meta badges (source_dataset / source_subset / task_family / modality / difficulty_bucket).
+// Checked under parsed.meta first, falling back to top-level fields on the record itself.
+function buildMetaTagsHtml(parsed) {
+  const m = parsed.meta || parsed;
+  const tags = [m.source_dataset, m.source_subset, m.task_family, m.modality, m.difficulty_bucket].filter(Boolean);
+  return tags.length ? `<div class="meta-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>` : '';
 }
 
 function renderAssistant(text) {
