@@ -891,6 +891,15 @@ function buildCard(lineNum, raw, parsed) {
 
         textHtml += buildMsgHtml(role, items);
       });
+
+      // Some records carry the assistant's reply outside `messages` as separate
+      // teacher_reasoning / teacher_answer fields rather than an assistant message.
+      const hasAssistantMsg = msgs.some(m => m.role === 'assistant');
+      if (!hasAssistantMsg && (parsed.teacher_reasoning || parsed.teacher_answer)) {
+        const reasoning = parsed.teacher_reasoning ? `<think>${parsed.teacher_reasoning}</think>` : '';
+        const answer = parsed.teacher_answer || '';
+        textHtml += buildMsgHtml('assistant', [{ type: 'text', text: reasoning + answer }]);
+      }
     }
   } else {
     textHtml = `<div class="error-msg">⚠ JSON 解析失败</div>`;
